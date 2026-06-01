@@ -22,6 +22,13 @@ export type ApiStatus =
 
 export type CurrencyCode = 'USD' | 'HKD' | 'EUR' | 'USDT' | 'USDC' | 'WUSD';
 
+/**
+ * INTERLACE_FIELD_MAP: Balance (Get Account Balance 响应项)
+ * Balance.currency  -> balance.currency
+ * Balance.available -> balance.available (可用余额)
+ * Balance.pending   -> balance.pending / hold (在途/冻结)
+ * Note: Interlace 可能额外返回 ledger/total 余额；当前 demo 仅建模 available + pending。
+ */
 export type Balance = {
   currency: CurrencyCode;
   available: number;

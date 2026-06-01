@@ -1,5 +1,21 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: Virtual Account List / 虚拟账户列表
+ * Related Interlace APIs:
+ * 1. Get Virtual Accounts - VA 列表加载与筛选 (accountId / entityId / 关键字)
+ * 2. Create Virtual Account - VA 由 Global Account 创建时一并生成（非本页触发，见 accounts-view / context）
+ *
+ * Current state:
+ * - 数据来源: useBaasDemo() context (virtualAccounts)，本页只读查询
+ * - 无真实 Interlace 请求
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；VA 创建入口在 Global Account 流程，本页负责核对银行收款信息
+ * - Docs: docs/baas-demo/virtual-accounts.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import { useMemo } from 'react';
 
 import Stack from '@mui/material/Stack';

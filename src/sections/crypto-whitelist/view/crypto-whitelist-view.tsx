@@ -1,5 +1,24 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: Crypto Whitelist / 数字货币白名单管理
+ * Related Interlace APIs:
+ * 1. Get Business Accounts (crypto-enabled) - 可出金账户列表
+ * 2. Get Payees / Crypto Whitelist          - 白名单地址列表与状态
+ * 3. Create / Update / Delete Crypto Whitelist Address - 新增/编辑/删除 (均需邮箱验证)
+ * 4. Retry Whitelist Sync                    - 同步失败后重试
+ * 5. 邮箱二次验证 (sensitive operation)      - 所有写操作前 send/verify 验证码
+ *
+ * Current state:
+ * - 数据来源: useBaasDemo() context (globalAccounts / payeeCalls)
+ * - 无真实 Interlace 请求；pending_sync->processing->completed 由 setTimeout 模拟
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；写操作替换为 Interlace adapter，同步状态由 Webhook 驱动
+ * - Docs: docs/baas-demo/crypto.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import type { ReactNode } from 'react';
 import type { ApiStatus } from 'src/types/common';
 import type { GlobalAccount } from 'src/types/account';

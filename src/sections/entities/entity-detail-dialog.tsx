@@ -1,5 +1,24 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: Entity Detail / KYB Review Dialog / 实体详情 + KYB 审核弹窗
+ * Related Interlace APIs:
+ * 1. Get Legal Entity (single)            - Overview / Individual KYC / Passport / Timeline 展示
+ * 2. Update Legal Entity                  - 提交 KYB (onSubmitKyb)、文件/审核项更新
+ * 3. Create Business Account (+ VA)       - 「提交开通全球账户」(onSubmitGlobalAccountOpening)
+ *
+ * Current state:
+ * - 数据来源: props (entity / kybRecord / accounts) 来自 useBaasDemo() context
+ * - 审核动作 (Approve/Reject/Need Info)、激活账户均为 Demo 端模拟；apiLogs 为 mock
+ * - 无真实 Interlace 请求
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；审核结果真实环境由 Interlace 合规侧产生并经 Webhook 回写
+ * - onSubmitKyb -> Update Legal Entity；onSubmitGlobalAccountOpening -> Create Business Account
+ * - Docs: docs/baas-demo/entities.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import type { Entity } from 'src/types/entity';
 import type { ApiStatus } from 'src/types/common';
 import type { GlobalAccount } from 'src/types/account';

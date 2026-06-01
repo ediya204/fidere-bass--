@@ -1,5 +1,25 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: Fiat Payout / 法币出金
+ * Related Interlace APIs:
+ * 1. Get Business Accounts   - 可出金账户 (active) 与可用余额
+ * 2. Get Payees              - 白名单收款账户 (按出金币种匹配)
+ * 3. Create Payee + Create Payout - 提交出金 (handleSubmit -> context.fiatWithdraw)
+ * 4. Different-account Business Transfer - 同一 Master 下不同账户互转场景（当前 demo 未单独区分）
+ * 5. Get Account Transactions - 法币出金交易列表
+ *
+ * Current state:
+ * - 数据来源: useBaasDemo() context (globalAccounts / externalPayees / transactions)
+ * - 无真实 Interlace 请求；"模拟外部 Payee 调用失败" 仅前端开关
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；fiatWithdraw 替换为 Interlace adapter
+ * - 真实接入需区分 intra-account vs different-account 转账并在 UI 提示
+ * - Docs: docs/baas-demo/fiat.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import type { CurrencyCode } from 'src/types/common';
 import type { ExternalPayee, PayeeReceivingAccount } from 'src/types/payee';
 
@@ -168,6 +188,13 @@ export function FiatView() {
   };
 
   const handleSubmit = async () => {
+    // INTERLACE_API_TODO:
+    // API: Create Payee (external) + Create Payout (法币出金)
+    // Trigger: 确认出金弹窗
+    // Request: { accountId, amount, currency, payeeName, destination }
+    //          -> sourceAccountId + 白名单收款方 + 金额
+    // Response: Transaction (status 'pending')
+    // Current: mock via context.fiatWithdraw (先 mock 创建外部 Payee 再生成交易)
     if (!selectedWhitelistAccount) {
       toast.error('请选择匹配的白名单收款账户');
       return;

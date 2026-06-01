@@ -1,5 +1,23 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: OTC / OTC 兑换
+ * Related Interlace APIs:
+ * 1. Get Business Accounts    - 可交易账户与法币/USDT 余额
+ * 2. OTC Quote                - 锁价 (当前本地汇率表 mock)
+ * 3. OTC Conversion           - 执行买/卖兑换 (handleSubmit -> context.otcTrade)
+ * 4. Get Account Transactions - OTC 历史 (otc_buy / otc_sell)
+ *
+ * Current state:
+ * - 数据来源: useBaasDemo() context (globalAccounts / otcTrades)
+ * - 无真实 Interlace 请求；汇率与状态推进均为 Demo 模拟
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；先接 OTC Quote 再接 OTC Conversion
+ * - Docs: docs/baas-demo/otc.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import type { OTCType } from 'src/types/otc';
 import type { CurrencyCode } from 'src/types/common';
 
@@ -123,6 +141,12 @@ export function OtcView() {
   const quoteExpiresAt = useMemo(() => new Date(Date.now() + 60_000).toISOString(), []);
 
   const handleSubmit = async () => {
+    // INTERLACE_API_TODO:
+    // API: OTC Quote + OTC Conversion
+    // Trigger: 确认 OTC 交易弹窗
+    // Request: { accountId, type(buy/sell), fromCurrency, toCurrency, fromAmount, rate, quoteId }
+    // Response: OtcTrade + Transaction (status 'pending' -> processing -> completed/failed)
+    // Current: mock via context.otcTrade；汇率与状态推进本地模拟
     if (!selectedAccount || amountInvalid) return;
 
     setSubmitting(true);

@@ -1,3 +1,24 @@
+/**
+ * PAGE_API_MAP:
+ * Page: ACCopen / BaaS 开户向导 (个人 / 企业)
+ * Related Interlace APIs:
+ * 1. Create Legal Entity - 用户完成开户向导并提交时创建实体
+ *      字段映射: 名/姓 -> entityName(个人), 国籍/居住国 -> jurisdiction,
+ *                手机国家代码+手机号 -> contactInfo.phone, personType -> INDIVIDUAL/COMPANY
+ * 2. Update Legal Entity - 补充缺失 KYC 资料 + 上传护照/自拍/地址证明/资金来源 (PASSPORT only)
+ *      文件 -> KybSupportingDocument (PASSPORT_PHOTO/SELFIE_LIVENESS/PROOF_OF_ADDRESS/SOURCE_OF_WEALTH)
+ *
+ * Current state:
+ * - 纯静态原型页：carriedFields / uploadFiles 为硬编码展示数据
+ * - 无表单状态、无 service 调用、无真实 Interlace 请求
+ * - FATCA (W-8BEN/W-9) 通过第三方签署模拟，不作为文件上传
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；接入时把只读字段替换为来自已有 KYC/Sumsub 的带出数据
+ * - 提交按钮接 Create Legal Entity + Update Legal Entity (见 entity-service / kyb-service)
+ * - Docs: docs/baas-demo/entities.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import type { Metadata } from 'next';
 
 import Box from '@mui/material/Box';

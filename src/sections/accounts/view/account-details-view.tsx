@@ -1,5 +1,24 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: Global Account Detail / 全球账户详情
+ * Related Interlace APIs:
+ * 1. Get Business Accounts (single) - 账户基础信息
+ * 2. Get Account Balance            - 法币/数字货币余额 (当前内嵌于 GlobalAccount.fiatBalances/cryptoBalances)
+ * 3. Get Virtual Accounts           - 关联 VA 列表
+ * 4. Get Account Transactions       - 最近交易 (按 accountId 过滤)
+ * 5. Create Crypto Deposit Address  - 「激活并创建 USDT 地址」(handleCreateAddress)
+ *
+ * Current state:
+ * - 数据来源: useBaasDemo() context；余额作为账户对象的嵌套字段
+ * - 无真实 Interlace 请求
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；真实接入时余额可能需单独调用 Get Account Balance
+ * - Docs: docs/baas-demo/accounts.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
@@ -69,6 +88,12 @@ export function AccountDetailsView({ id }: Props) {
     .slice(0, 8);
 
   const handleCreateAddress = async () => {
+    // INTERLACE_API_TODO:
+    // API: Create Crypto Deposit Address
+    // Trigger: 点击「激活并创建 USDT 地址」
+    // Request: account.id -> businessAccountId
+    // Response: UsdtAddress (chain/address)；账户 cryptoEnabled=true
+    // Current: mock via context.createUSDTAddress
     await createUSDTAddress(account.id);
     toast.success('USDT 地址已创建', {
       action: {

@@ -6,6 +6,15 @@ import { mockOtcTrades } from 'src/mocks/otc';
 
 import { makeId, mockDelay, makeReference } from './mock-service-utils';
 
+/**
+ * INTERLACE_API_MAPPING: OTC service (createMockOtcQuote / getOtcTrades / otcTrade)
+ * Real API: OTC Quote + OTC Conversion
+ * Endpoints: POST /otc/quotes -> 锁价; POST /otc/conversions -> 执行兑换 (预期)
+ * Params: accountId -> businessAccountId, fromCurrency/toCurrency/fromAmount, quoteId
+ * Response: OtcQuote / OtcTrade <- rate、toAmount、status、settlement 时间
+ * Current: 汇率表与 quote 全部本地 mock；otcTrade 同时构造 OtcTrade + Transaction。
+ *   状态推进 (pending->processing->completed/failed) 由 context.advanceOtcStatus 模拟。
+ */
 const USD_MARK_PRICE: Record<CurrencyCode, number> = {
   USD: 1,
   HKD: 0.1278,

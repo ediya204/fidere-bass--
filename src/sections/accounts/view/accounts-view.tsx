@@ -1,5 +1,23 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: Global Account List / 全球账户列表
+ * Related Interlace APIs:
+ * 1. Get Business Accounts - 账户列表加载与筛选 (entityId / 关键字)
+ * 2. Create Business Account (+ Create Virtual Account) - 「创建 Global Account」(handleCreateAccount)
+ * 3. Get Legal Entity (list) - 仅 active 实体可选作创建归属
+ *
+ * Current state:
+ * - 数据来源: useBaasDemo() context (entities / globalAccounts)
+ * - 无真实 Interlace 请求
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；创建成功后跳转账户详情
+ * - createGlobalAccount 替换为 Interlace adapter；账户激活靠 Webhook
+ * - Docs: docs/baas-demo/accounts.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import { useMemo, useState } from 'react';
 
 import Stack from '@mui/material/Stack';
@@ -46,6 +64,12 @@ export function AccountsView() {
   );
 
   const handleCreateAccount = async () => {
+    // INTERLACE_API_TODO:
+    // API: Create Business Account (+ Create Virtual Account)
+    // Trigger: 点击「创建」(仅 active 实体)
+    // Request: draft { entityId, name } -> { legalEntityId, accountName }
+    // Response: GlobalAccount (accountId/status by API)；默认 VA 一并创建
+    // Current: mock via context.createGlobalAccount
     if (!draft.entityId || !draft.name) return;
 
     const account = await createGlobalAccount(draft);

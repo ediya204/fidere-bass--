@@ -1,5 +1,21 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: Transactions / 交易流水
+ * Related Interlace APIs:
+ * 1. Get Account Transactions - 交易列表 (按 accountId / entityId / type / status 过滤)
+ *
+ * Current state:
+ * - 数据来源: useBaasDemo() context (transactions)，筛选在前端完成
+ * - 无真实 Interlace 请求
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；前端筛选条件未来映射为 Get Account Transactions 的 query params
+ * - 详情 Drawer 的 timeline 真实接入后来自交易状态历史 / Webhook
+ * - Docs: docs/baas-demo/transactions.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import type { ApiStatus } from 'src/types/common';
 
 import { useMemo, useEffect } from 'react';

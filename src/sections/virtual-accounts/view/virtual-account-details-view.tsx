@@ -1,5 +1,21 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: Virtual Account Detail / 虚拟账户详情
+ * Related Interlace APIs:
+ * 1. Get Virtual Accounts (single) - VA 银行账户信息 (bankName/accountNumber/routing/swift)
+ * 2. Get Account Transactions      - VA 关联交易记录
+ *
+ * Current state:
+ * - 数据来源: useBaasDemo() context；只读展示银行收款信息
+ * - 无真实 Interlace 请求
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；银行字段直接来自 Create Virtual Account 响应
+ * - Docs: docs/baas-demo/virtual-accounts.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import Grid from '@mui/material/Grid';
 import Button from '@mui/material/Button';
 

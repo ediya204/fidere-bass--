@@ -1,5 +1,24 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: Crypto Payout / 数字货币出金
+ * Related Interlace APIs:
+ * 1. Get Business Accounts (crypto-enabled) - 可出金账户与 USDT 余额
+ * 2. Get Payees (crypto whitelist)          - 当前账户已完成同步的白名单地址
+ * 3. 邮箱二次验证 (sensitive operation)      - 出金前 send/verify 验证码
+ * 4. Crypto Payout                          - 提交链上出金 (handleSubmit -> context.cryptoWithdraw)
+ * 5. Get Account Transactions               - 数字货币出金交易列表
+ *
+ * Current state:
+ * - 数据来源: useBaasDemo() context (globalAccounts / payeeCalls / transactions)
+ * - 无真实 Interlace 请求；验证码固定 123456
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；cryptoWithdraw 替换为 Interlace Crypto Payout adapter
+ * - Docs: docs/baas-demo/crypto.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
@@ -271,6 +290,12 @@ export function CryptoView() {
   };
 
   const handleSubmit = async () => {
+    // INTERLACE_API_TODO:
+    // API: Crypto Payout
+    // Trigger: 邮箱验证通过后提交链上出金
+    // Request: { accountId, amount, currency: 'USDT', payeeName, destination(白名单地址) }
+    // Response: Transaction (status 'processing')
+    // Current: mock via context.cryptoWithdraw
     setSubmitting(true);
     try {
       if (!selectedWhitelistPayee) return;

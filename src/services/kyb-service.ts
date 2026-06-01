@@ -4,11 +4,28 @@ import { mockKybRecords } from 'src/mocks/kyb';
 
 import { makeId, mockDelay } from './mock-service-utils';
 
+/**
+ * INTERLACE_API_MAPPING: getKybRecords
+ * Real API: Get Legal Entity (compliance / KYB detail)
+ * Endpoint: GET /legal-entities/{entityId}/compliance (预期)
+ * Response: KybRecord[] <- 合规状态、文件审核结果、时间线
+ * Current: 返回 mockKybRecords。
+ */
 export async function getKybRecords() {
   await mockDelay();
   return mockKybRecords;
 }
 
+/**
+ * INTERLACE_API_MAPPING: submitKyb
+ * Real API: Update Legal Entity (提交/补充 KYB 资料)
+ * Endpoint: PATCH /legal-entities/{entityId} 或 POST .../documents (预期)
+ * Params (SubmitKybPayload): entityId -> legalEntityId,
+ *   documentNames -> 真实接入应为已上传文件的 documentId/fileUrl（需先调用文件上传端点）。
+ * Trigger: 开户向导提交、KYB 补件、审核驳回后重新提交。
+ * Response: KybRecord <- complianceStatus、supportingDocuments、reviewItems
+ * Current: 直接构造记录；文件、审核项、apiLogs 均为 mock，无真实文件上传。
+ */
 export async function submitKyb(payload: SubmitKybPayload): Promise<KybRecord> {
   await mockDelay();
 

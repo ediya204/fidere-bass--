@@ -1,5 +1,29 @@
 'use client';
 
+/**
+ * PAGE_API_MAP: BaaS Demo Context (全局状态聚合层)
+ * 本 context 是所有 BaaS 页面与 service 层之间的唯一聚合点。真实接入 Interlace 时，
+ * 替换各 service 函数为 Interlace adapter 后，本文件的 handler 基本无需改动。
+ *
+ * Action -> Interlace API 对照：
+ *   reload()                       -> Get Legal Entity(list) + Get Business Accounts + Get Virtual Accounts
+ *                                     + Get Account Transactions + Get Payees (并行拉取)
+ *   handleCreateEntity             -> Create Legal Entity
+ *   handleSubmitKyb                -> Update Legal Entity (提交 KYB)
+ *   approveEntity / approveKybAndCreateEntity / updateKybReviewItem / updateKybDocumentReview
+ *                                  -> 仅 Demo 端模拟审核结果；真实环境由 Interlace 合规审核 + Webhook 回写
+ *   submitGlobalAccountOpening / handleCreateGlobalAccount -> Create Business Account + Create Virtual Account
+ *   activateGlobalAccount          -> Demo 模拟；真实环境账户激活由 Webhook 通知
+ *   handleCreateUSDTAddress        -> Create Crypto Deposit Address
+ *   handleFiatWithdraw / handleCreateFiatPayout -> Create Payee + Create Payout (法币出金)
+ *   handleCryptoWithdraw           -> Crypto Payout (链上出金，需邮箱验证)
+ *   handleOtcTrade                 -> OTC Quote + OTC Conversion
+ *   create/update/delete/retry CryptoWhitelist + 邮箱验证 -> Payee / Crypto Whitelist API
+ *   advancePayoutStatus / advanceOtcStatus / setCryptoWhitelistStatus
+ *                                  -> Demo 状态推进；真实环境由 Webhook 驱动状态机
+ * Integration note: 保持 handler 签名不变，仅替换 service 实现；状态推进类 action 真实接入后改为 Webhook 监听。
+ */
+
 import type { UsdtAddress } from 'src/types/usdt';
 import type { OtcTrade, OtcTradePayload } from 'src/types/otc';
 import type { Entity, CreateEntityPayload } from 'src/types/entity';
@@ -203,12 +227,24 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
   }, [reload]);
 
   const handleCreateEntity = useCallback(async (payload: CreateEntityPayload) => {
+    // INTERLACE_API_TODO:
+    // API: Create Legal Entity
+    // Trigger: 用户在开户向导 / 实体列表完成创建并提交
+    // Request: CreateEntityPayload -> { entityName, personType, jurisdiction, contactInfo }
+    // Response: Entity (entityId / status / complianceStatus 用 API 返回值)
+    // Current: mock via createEntity(); Next: 替换为 Interlace adapter
     const nextEntity = await createEntity(payload);
     setEntities((current) => [nextEntity, ...current]);
     return nextEntity;
   }, []);
 
   const handleSubmitKyb = useCallback(async (payload: SubmitKybPayload) => {
+    // INTERLACE_API_TODO:
+    // API: Update Legal Entity (提交 KYB 资料/文件)
+    // Trigger: KYB 提交、补件、驳回后重新提交
+    // Request: SubmitKybPayload -> legalEntityId + 已上传文件 documentId/fileUrl + KYC 字段
+    // Response: KybRecord (complianceStatus)，同时本地把 entity 推进为 'submitted'
+    // Current: mock via submitKyb(); 无真实文件上传
     const nextRecord = await submitKyb(payload);
     setKybRecords((current) => [
       nextRecord,
@@ -428,6 +464,12 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleCreateGlobalAccount = useCallback(async (payload: CreateAccountPayload) => {
+    // INTERLACE_API_TODO:
+    // API: Create Business Account (+ Create Virtual Account)
+    // Trigger: 账户列表「创建 Global Account」(仅 active 实体)
+    // Request: CreateAccountPayload -> { legalEntityId, accountName }
+    // Response: GlobalAccount (accountId/status by API); 随后为其创建默认 VA
+    // Current: mock via createAccount() + createVirtualAccount()
     const nextAccount = await createAccount(payload);
     const nextVirtualAccount = await createVirtualAccount(nextAccount);
 
@@ -442,6 +484,13 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
 
   const submitGlobalAccountOpening = useCallback(
     async (entityId: string) => {
+      // INTERLACE_API_TODO:
+      // API: Create Business Account (+ Create Virtual Account)
+      // Trigger: 实体详情弹窗「提交开通全球账户」
+      // Precondition: entity.kybStatus === 'approved'
+      // Request: { legalEntityId: entityId, accountName }
+      // Response: GlobalAccount (status 'pending'，激活靠 Webhook -> activateGlobalAccount)
+      // Current: mock via createAccount() + createVirtualAccount()
       const entity = entities.find((item) => item.id === entityId);
       if (!entity || entity.kybStatus !== 'approved') return null;
 
@@ -659,6 +708,12 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
 
   const handleFiatWithdraw = useCallback(
     async (payload: TransferPayload) => {
+      // INTERLACE_API_TODO:
+      // API: Create Payee + Create Payout (法币出金)；不同账户互转走 Different-account Business Transfer
+      // Trigger: 法币出金页提交
+      // Request: TransferPayload -> sourceAccountId + 收款方 + amount/currency
+      // Response: Transaction (status 'pending')
+      // Current: mock — 先 createPayeeExternalCall 再 fiatWithdraw
       const entityId = findAccountEntityId(globalAccounts, payload.accountId);
       if (!entityId) return null;
 
@@ -762,6 +817,12 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
 
   const handleCryptoWithdraw = useCallback(
     async (payload: TransferPayload) => {
+      // INTERLACE_API_TODO:
+      // API: Crypto Payout (链上出金)
+      // Trigger: 数字货币出金页，邮箱验证通过后提交
+      // Request: TransferPayload -> sourceAccountId + 白名单链上地址 + amount(USDT)
+      // Response: Transaction (status 'processing')
+      // Current: mock via cryptoWithdraw()
       const entityId = findAccountEntityId(globalAccounts, payload.accountId);
       if (!entityId) return null;
 

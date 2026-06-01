@@ -1,5 +1,23 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: BaaS Dashboard / 中台总览
+ * Related Interlace APIs:
+ * 1. Get Legal Entity (list) - 实体总数 / 待审核 KYB / 最近新增实体统计
+ * 2. Get Business Accounts    - 账户总数统计
+ * 3. Get Account Transactions - 今日交易金额 / 异常状态 / 最近交易表
+ *
+ * Current state:
+ * - 数据来源: useBaasDemo() context (entities / globalAccounts / transactions)，统计在前端 useMemo 计算
+ * - 无真实 Interlace 请求
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；后续替换 context 背后的 service 为 Interlace adapter
+ * - 统计指标真实接入后建议由后端聚合端点提供，避免前端全量拉取
+ * - Docs: docs/baas-demo/dashboard.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import type { IconifyName } from 'src/components/iconify';
 
 import { useMemo } from 'react';

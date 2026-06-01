@@ -11,6 +11,20 @@ import { mockPayeeCalls, mockExternalPayees } from 'src/mocks/payees';
 
 import { makeId, mockDelay, makeReference } from './mock-service-utils';
 
+/**
+ * INTERLACE_API_MAPPING: Payee / Crypto Whitelist service
+ * Real API: Create/Get Payee + Crypto Whitelist Address + 敏感操作邮箱验证
+ * Endpoints (预期):
+ *   getExternalPayees / getPayeeExternalCalls -> GET /payees
+ *   createPayeeExternalCall                   -> POST /payees (法币收款方)
+ *   createCryptoWhitelistAddress              -> POST /crypto/whitelist
+ *   updateCryptoWhitelistAddress              -> PATCH /crypto/whitelist/{id}
+ *   deleteCryptoWhitelistAddress              -> DELETE /crypto/whitelist/{id}
+ *   retryCryptoWhitelistSync                  -> POST /crypto/whitelist/{id}/sync
+ *   sendPayeeEmailVerificationCode / verifyPayeeEmailCode -> 敏感操作二次验证 (创建/编辑/删除/出金)
+ * Current: 全部 mock；验证码固定 123456 (000000=错误, 999999=过期)。
+ *   白名单 pending_sync -> processing -> completed 流转由 context.scheduleCryptoWhitelistSync 用 setTimeout 模拟。
+ */
 export async function getPayeeExternalCalls() {
   await mockDelay();
   return mockPayeeCalls;

@@ -1,5 +1,24 @@
 'use client';
 
+/**
+ * PAGE_API_MAP:
+ * Page: Entity List & KYB / 实体与 KYB
+ * Related Interlace APIs:
+ * 1. Get Legal Entity (list)  - 实体列表加载与筛选 (kybStatus / 关键字)
+ * 2. Create Legal Entity      - 「创建实体」表单提交 (handleCreate)
+ * 3. Update Legal Entity      - 提交 KYB (handleSubmitKyb)，详情见 EntityDetailDialog
+ * 4. Get Legal Entity (single)- 选中实体回查详情/KYB
+ *
+ * Current state:
+ * - 数据来源: useBaasDemo() context (entities / kybRecords / globalAccounts)
+ * - 无真实 Interlace 请求；审核状态推进为 Demo 模拟
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；列表筛选未来改为 Get Legal Entity 的 query params
+ * - createEntity / submitKyb 替换为 Interlace adapter；真实状态由 Webhook 回写
+ * - Docs: docs/baas-demo/entities.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import type { Entity } from 'src/types/entity';
 
 import { useMemo, useState, useEffect } from 'react';
@@ -89,6 +108,12 @@ export function EntitiesView() {
   }, [entities, searchParams]);
 
   const handleCreate = async () => {
+    // INTERLACE_API_TODO:
+    // API: Create Legal Entity
+    // Trigger: 点击「创建」按钮
+    // Request: draft { name, type, country, email } -> { entityName, personType, jurisdiction, contactInfo }
+    // Response: Entity (entityId 由 API 返回)
+    // Current: mock via context.createEntity
     if (!draft.name || !draft.email) return;
     const entity = await createEntity(draft);
     setDraft({ name: '', type: 'company', country: 'HK', email: '', phone: '' });
@@ -98,6 +123,12 @@ export function EntitiesView() {
   };
 
   const handleSubmitKyb = async () => {
+    // INTERLACE_API_TODO:
+    // API: Update Legal Entity (提交 KYB)
+    // Trigger: 实体详情弹窗内提交 KYB
+    // Request: { entityId, documentNames } -> legalEntityId + 已上传文件/KYC 字段
+    // Response: KybRecord (complianceStatus)
+    // Current: mock via context.submitKyb；documentNames 为占位文件名
     if (!selectedEntity) return;
     await submitKyb({
       entityId: selectedEntity.id,

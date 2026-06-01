@@ -1,3 +1,20 @@
+/**
+ * PAGE_API_MAP:
+ * Page: Payout Wizard Layout / 出金（转账）向导布局组件
+ * Related Interlace APIs (向导各步骤承载的资金类操作):
+ * 1. Create Payout                       - 法币出金到外部收款方
+ * 2. Intra-account Business Transfer     - 同一实体名下账户互转
+ * 3. Different-account Business Transfer  - 同一 Master 下不同 Business Account 互转 (Master↔Sub / Sub↔Sub)
+ *
+ * Current state:
+ * - 纯展示/布局组件 (Stepper / SectionCard / ActionBar)，本身不发请求
+ * - 实际提交逻辑在使用方 (fiat-view) 通过 useBaasDemo() 调用
+ *
+ * Integration note:
+ * - 保持现有 UI 结构不变；真实接入时在向导确认步骤区分 intra/different-account 端点
+ * - Docs: docs/baas-demo/fiat.md, docs/baas-demo/interlace-api-map.md
+ */
+
 import type { ReactNode } from 'react';
 import type { ButtonProps } from '@mui/material/Button';
 import type { Theme, SxProps } from '@mui/material/styles';
