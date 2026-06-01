@@ -6,9 +6,10 @@ import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
 
 import { paths } from 'src/routes/paths';
-import { useRouter } from 'src/routes/hooks';
+import { useRouter, useUrlQueryState } from 'src/routes/hooks';
 
 import { formatMoney, formatDateTime, transactionTypeLabel } from 'src/utils/baas-format';
+import { buildQueryHref, appendQueryHref, safeBaasReturnTo } from 'src/utils/baas-navigation';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useBaasDemo } from 'src/contexts/baas-demo-context';
@@ -17,7 +18,7 @@ import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
 import { EmptyContent } from 'src/components/empty-content';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
-import { DataTable, StatusChip, InfoSection } from 'src/components/common';
+import { DataTable, StatusChip, InfoSection, RelatedLink } from 'src/components/common';
 
 type Props = {
   id: string;
@@ -25,6 +26,7 @@ type Props = {
 
 export function AccountDetailsView({ id }: Props) {
   const router = useRouter();
+  const { currentHref, searchParams } = useUrlQueryState();
   const {
     entities,
     globalAccounts,
@@ -36,6 +38,7 @@ export function AccountDetailsView({ id }: Props) {
   } = useBaasDemo();
 
   const account = globalAccounts.find((item) => item.id === id);
+  const backHref = safeBaasReturnTo(searchParams.get('returnTo'), paths.dashboard.baas.accounts);
 
   if (!account) {
     return (
@@ -50,26 +53,53 @@ export function AccountDetailsView({ id }: Props) {
           ]}
           sx={{ mb: { xs: 3, md: 5 } }}
         />
-        <EmptyContent title="未找到账户" action={<Button onClick={() => router.push(paths.dashboard.baas.accounts)}>返回列表</Button>} />
+        <EmptyContent
+          title="未找到账户"
+          action={<Button onClick={() => router.push(backHref)}>返回列表</Button>}
+        />
       </DashboardContent>
     );
   }
 
   const entity = entities.find((item) => item.id === account.entityId);
-  const accountVirtualAccounts = virtualAccounts.filter((item) => item.globalAccountId === account.id);
+  const accountVirtualAccounts = virtualAccounts.filter(
+    (item) => item.globalAccountId === account.id
+  );
   const usdtAddress = usdtAddresses.find((address) => address.accountId === account.id);
   const accountTransactions = transactions
     .filter((transaction) => transaction.accountId === account.id)
     .slice(0, 8);
 
   const handleCreateVa = async () => {
-    await createVirtualAccount(account.id);
-    toast.success('VA 创建请求已提交');
+    const virtualAccount = await createVirtualAccount(account.id);
+
+    if (!virtualAccount) {
+      toast.error('VA 创建请求提交失败');
+      return;
+    }
+
+    toast.success('VA 创建请求已提交', {
+      action: {
+        label: '查看 VA',
+        onClick: () =>
+          router.push(
+            appendQueryHref(paths.dashboard.baas.virtualAccountDetails(virtualAccount.id), {
+              returnTo: currentHref,
+            })
+          ),
+      },
+    });
   };
 
   const handleCreateAddress = async () => {
     await createUSDTAddress(account.id);
-    toast.success('USDT 地址已创建');
+    toast.success('USDT 地址已创建', {
+      action: {
+        label: '去数字货币出金',
+        onClick: () =>
+          router.push(buildQueryHref(paths.dashboard.baas.crypto, { accountId: account.id })),
+      },
+    });
   };
 
   return (
@@ -84,10 +114,14 @@ export function AccountDetailsView({ id }: Props) {
         ]}
         action={
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Button variant="outlined" color="inherit" onClick={() => router.push(paths.dashboard.baas.accounts)}>
+            <Button variant="outlined" color="inherit" onClick={() => router.push(backHref)}>
               返回列表
             </Button>
-            <Button variant="contained" onClick={handleCreateVa} startIcon={<Iconify icon="solar:bill-list-bold" />}>
+            <Button
+              variant="contained"
+              onClick={handleCreateVa}
+              startIcon={<Iconify icon="solar:bill-list-bold" />}
+            >
               创建 VA
             </Button>
             <Button variant="outlined" onClick={handleCreateAddress} disabled={!!usdtAddress}>
@@ -104,7 +138,18 @@ export function AccountDetailsView({ id }: Props) {
             title="账户信息"
             rows={[
               { label: 'Global Account ID', value: account.accountId },
-              { label: '所属实体', value: entity?.name ?? '-' },
+              {
+                label: '所属实体',
+                value: entity ? (
+                  <RelatedLink
+                    href={buildQueryHref(paths.dashboard.baas.entities, { entityId: entity.id })}
+                    label={entity.name}
+                    caption={entity.entityId}
+                  />
+                ) : (
+                  '-'
+                ),
+              },
               { label: '账户状态', value: <StatusChip status={account.status} /> },
               { label: '创建时间', value: formatDateTime(account.createdAt) },
               { label: '数字货币能力', value: account.cryptoEnabled ? '已激活' : '未激活' },
@@ -153,7 +198,14 @@ export function AccountDetailsView({ id }: Props) {
             rows={accountVirtualAccounts}
             rowKey={(row) => row.id}
             emptyText="暂无 VA"
-            onRowClick={(row) => router.push(paths.dashboard.baas.virtualAccountDetails(row.id))}
+            emptyDescription="点击创建 VA 后，新 VA 会出现在这里。"
+            onRowClick={(row) =>
+              router.push(
+                appendQueryHref(paths.dashboard.baas.virtualAccountDetails(row.id), {
+                  returnTo: currentHref,
+                })
+              )
+            }
             columns={[
               { id: 'vaId', label: 'VA ID', render: (row) => row.vaId },
               { id: 'currency', label: '币种', render: (row) => row.currency },
@@ -168,9 +220,22 @@ export function AccountDetailsView({ id }: Props) {
             rows={accountTransactions}
             rowKey={(row) => row.id}
             emptyText="暂无交易"
+            emptyDescription="提交出金或 OTC 后，可从这里继续追踪交易流水。"
+            onRowClick={(row) =>
+              router.push(
+                buildQueryHref(paths.dashboard.baas.transactions, {
+                  accountId: account.id,
+                  transactionId: row.id,
+                })
+              )
+            }
             columns={[
               { id: 'type', label: '类型', render: (row) => transactionTypeLabel(row.type) },
-              { id: 'amount', label: '金额', render: (row) => formatMoney(row.amount, row.currency) },
+              {
+                id: 'amount',
+                label: '金额',
+                render: (row) => formatMoney(row.amount, row.currency),
+              },
               { id: 'status', label: '状态', render: (row) => <StatusChip status={row.status} /> },
             ]}
           />

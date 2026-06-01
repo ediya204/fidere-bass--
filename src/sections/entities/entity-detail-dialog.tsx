@@ -40,6 +40,7 @@ import DialogContent from '@mui/material/DialogContent';
 import { paths } from 'src/routes/paths';
 import { RouterLink } from 'src/routes/components';
 
+import { buildQueryHref, appendQueryHref } from 'src/utils/baas-navigation';
 import { formatMoney, formatDateTime, entityTypeLabel } from 'src/utils/baas-format';
 
 import { Label } from 'src/components/label';
@@ -924,7 +925,11 @@ export function EntityDetailDialog({
                       render: (row) => (
                         <Link
                           component={RouterLink}
-                          href={paths.dashboard.baas.accountDetails(row.id)}
+                          href={appendQueryHref(paths.dashboard.baas.accountDetails(row.id), {
+                            returnTo: buildQueryHref(paths.dashboard.baas.entities, {
+                              entityId: entity.id,
+                            }),
+                          })}
                           color="inherit"
                           underline="hover"
                           sx={{ fontWeight: 600 }}
@@ -1121,7 +1126,7 @@ export function EntityDetailDialog({
         }
         action={
           <Button variant="contained" onClick={handleConfirm}>
-            Confirm
+            确认
           </Button>
         }
       />

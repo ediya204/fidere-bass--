@@ -1,1248 +1,561 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import type { Balance, ApiStatus } from 'src/types/common';
-import type { PayoutTransaction } from 'src/types/transaction';
+import type { CurrencyCode } from 'src/types/common';
 import type { ExternalPayee, PayeeReceivingAccount } from 'src/types/payee';
 
-import { useRef, useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 import Box from '@mui/material/Box';
+import Card from '@mui/material/Card';
 import Grid from '@mui/material/Grid';
-import Alert from '@mui/material/Alert';
 import Stack from '@mui/material/Stack';
-import Paper from '@mui/material/Paper';
-import Timeline from '@mui/lab/Timeline';
+import Button from '@mui/material/Button';
+import Switch from '@mui/material/Switch';
+import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
-import TimelineDot from '@mui/lab/TimelineDot';
 import TextField from '@mui/material/TextField';
-import IconButton from '@mui/material/IconButton';
 import Typography from '@mui/material/Typography';
-import TimelineContent from '@mui/lab/TimelineContent';
-import InputAdornment from '@mui/material/InputAdornment';
-import TimelineConnector from '@mui/lab/TimelineConnector';
-import TimelineSeparator from '@mui/lab/TimelineSeparator';
-import TimelineItem, { timelineItemClasses } from '@mui/lab/TimelineItem';
+import CardHeader from '@mui/material/CardHeader';
+import CardContent from '@mui/material/CardContent';
+import FormControlLabel from '@mui/material/FormControlLabel';
 
 import { paths } from 'src/routes/paths';
+import { useRouter } from 'src/routes/hooks';
 
+import { buildQueryHref } from 'src/utils/baas-navigation';
 import { formatMoney, formatDateTime } from 'src/utils/baas-format';
 
 import { DashboardContent } from 'src/layouts/dashboard';
-import { STATUS_COLORS } from 'src/constants/status-options';
 import { useBaasDemo } from 'src/contexts/baas-demo-context';
 
 import { toast } from 'src/components/snackbar';
 import { Iconify } from 'src/components/iconify';
+import { ConfirmDialog } from 'src/components/custom-dialog';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
-import { StatCard, DataTable, StatusChip, InfoSection, DetailDrawer } from 'src/components/common';
+import { ActionBar, DataTable, StatusChip } from 'src/components/common';
 
-import {
-  ReviewRows,
-  WizardActions,
-  PayoutWizardShell,
-  WizardSectionCard,
-  PayoutWizardStepper,
-  PAYOUT_WIZARD_LAYOUT,
-  PayoutWizardStepLayout,
-} from '../payout-wizard-layout';
+// ----------------------------------------------------------------------
 
-const STEPS = ['Recipient Details', 'Payout Details', 'Review Payout'];
-const PURPOSE_OPTIONS = ['供应商付款', '服务费结算', '跨境采购', '退款', '内部资金调拨'];
-const ESTIMATED_ARRIVAL = 'T+1 工作日';
-const QUOTE_RATE = '1.0000';
-const QUOTE_FRESHNESS = 'Fresh for demo review';
-
-const FIELD_SX = {
-  '& .MuiInputBase-root': {
-    minHeight: 56,
-  },
+type FiatForm = {
+  accountId: string;
+  currency: CurrencyCode;
+  amount: number;
+  simulateFailed: boolean;
+  receivingAccountId: string;
+  reference: string;
 };
 
-const getTimelineDotColor = (status: ApiStatus) => {
-  const color = STATUS_COLORS[status];
-  return color === 'default' ? 'grey' : color;
-};
+const calcFee = (amount: number) => Math.max(amount * 0.001, 5);
 
-const payeeTypeLabel = (type: ExternalPayee['type']) =>
-  type === 'SELF_OWNED' ? 'SELF OWNED' : 'THIRD PARTY';
+const maskAccount = (accountNumber: string, last4?: string) =>
+  last4 || accountNumber.length > 4 ? `**** ${last4 ?? accountNumber.slice(-4)}` : accountNumber;
 
-const maskAccount = (accountNumber: string) =>
-  accountNumber.length > 4 ? `**** ${accountNumber.slice(-4)}` : accountNumber;
+// ----------------------------------------------------------------------
 
-function CopyValueButton({ value, label }: { value?: string; label: string }) {
-  if (!value) {
-    return null;
-  }
-
-  return (
-    <IconButton
-      size="small"
-      aria-label={`Copy ${label}`}
-      onClick={() => {
-        navigator.clipboard?.writeText(value);
-        toast.success(`${label} 已复制`);
-      }}
-      sx={{ ml: 0.5 }}
-    >
-      <Iconify icon="solar:copy-bold" width={16} />
-    </IconButton>
-  );
-}
-
-function ListHeader({ title, action }: { title: string; action?: ReactNode }) {
-  return (
-    <Stack
-      direction="row"
-      alignItems="center"
-      justifyContent="space-between"
-      sx={{
-        px: 2,
-        height: PAYOUT_WIZARD_LAYOUT.listHeaderHeight,
-        borderBottom: (theme) => `1px solid ${theme.vars.palette.divider}`,
-      }}
-    >
-      <Typography variant="subtitle2" noWrap>
-        {title}
-      </Typography>
-      {action}
-    </Stack>
-  );
-}
-
-function EmptyListState({ title, description }: { title: string; description: string }) {
-  return (
-    <Stack
-      spacing={1}
-      alignItems="center"
-      justifyContent="center"
-      sx={{ height: 1, px: 3, textAlign: 'center', color: 'text.secondary' }}
-    >
-      <Iconify icon="solar:inbox-bold" width={28} />
-      <Typography variant="subtitle2" color="text.primary">
-        {title}
-      </Typography>
-      <Typography variant="caption">{description}</Typography>
-    </Stack>
-  );
-}
-
-function CounterpartyListItem({
-  payee,
-  selected,
-  onSelect,
-}: {
+type WhitelistAccountOption = {
   payee: ExternalPayee;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const disabled = payee.status !== 'active';
-
-  return (
-    <Stack
-      spacing={0.75}
-      onClick={disabled ? undefined : onSelect}
-      sx={{
-        px: 2,
-        py: 1.5,
-        minHeight: PAYOUT_WIZARD_LAYOUT.listRowHeight,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.58 : 1,
-        borderLeft: (theme) =>
-          selected ? `3px solid ${theme.vars.palette.primary.main}` : '3px solid transparent',
-        bgcolor: selected ? 'primary.lighter' : 'transparent',
-        transition: (theme) =>
-          theme.transitions.create(['background-color', 'border-color', 'opacity'], {
-            duration: theme.transitions.duration.shorter,
-          }),
-        '&:hover': {
-          bgcolor: disabled ? 'transparent' : selected ? 'primary.lighter' : 'action.hover',
-        },
-      }}
-    >
-      <Stack direction="row" spacing={1.5} alignItems="center">
-        <Box
-          sx={{
-            width: 36,
-            height: 36,
-            display: 'grid',
-            flexShrink: 0,
-            borderRadius: '50%',
-            color: selected ? 'primary.main' : 'text.primary',
-            placeItems: 'center',
-            bgcolor: selected ? 'primary.lighter' : 'background.neutral',
-          }}
-        >
-          <Iconify icon="solar:user-rounded-bold" width={18} />
-        </Box>
-
-        <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-          <Typography variant="subtitle2" noWrap>
-            {payee.name}
-          </Typography>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-            <Typography
-              variant="caption"
-              sx={{ color: payee.type === 'SELF_OWNED' ? 'success.main' : 'text.secondary' }}
-            >
-              {payeeTypeLabel(payee.type)}
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Quota {formatMoney(payee.availableQuota ?? 0, payee.quotaCurrency ?? 'USD')}
-            </Typography>
-          </Stack>
-        </Box>
-
-        <StatusChip status={payee.status} />
-      </Stack>
-    </Stack>
-  );
-}
-
-function ReceivingAccountItem({
-  account,
-  selected,
-  onSelect,
-}: {
   account: PayeeReceivingAccount;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const disabled = account.status !== 'active';
-
-  return (
-    <Stack
-      direction="row"
-      spacing={1.5}
-      alignItems="center"
-      onClick={disabled ? undefined : onSelect}
-      sx={{
-        px: 2,
-        py: 1.5,
-        minHeight: PAYOUT_WIZARD_LAYOUT.listRowHeight,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.58 : 1,
-        bgcolor: selected ? 'success.lighter' : 'transparent',
-        borderLeft: (theme) =>
-          selected ? `3px solid ${theme.vars.palette.success.main}` : '3px solid transparent',
-        transition: (theme) =>
-          theme.transitions.create(['background-color', 'border-color', 'opacity'], {
-            duration: theme.transitions.duration.shorter,
-          }),
-        '&:hover': {
-          bgcolor: disabled ? 'transparent' : selected ? 'success.lighter' : 'action.hover',
-        },
-      }}
-    >
-      <Box
-        sx={{
-          width: 34,
-          height: 24,
-          borderRadius: 0.75,
-          display: 'grid',
-          flexShrink: 0,
-          placeItems: 'center',
-          color: 'common.white',
-          bgcolor: 'grey.800',
-          typography: 'caption',
-          fontWeight: 700,
-        }}
-      >
-        {account.country ?? 'HK'}
-      </Box>
-
-      <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-        <Typography variant="subtitle2" noWrap>
-          {account.currency} · {account.rail} · {account.bankName}
-        </Typography>
-        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {maskAccount(account.accountNumber)}
-        </Typography>
-      </Box>
-
-      {selected ? <StatusChip status="active" /> : <StatusChip status={account.status} />}
-    </Stack>
-  );
-}
-
-function QuoteMetric({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <Stack spacing={0.25} sx={{ minWidth: 0 }}>
-      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-        {label}
-      </Typography>
-      <Typography variant="subtitle2" noWrap>
-        {value}
-      </Typography>
-    </Stack>
-  );
-}
+};
 
 export function FiatView() {
-  const {
-    error,
-    loading,
-    entities,
-    globalAccounts,
-    externalPayees,
-    payoutTransactions,
-    createFiatPayout,
-    advancePayoutStatus,
-  } = useBaasDemo();
+  const router = useRouter();
+  const { globalAccounts, externalPayees, transactions, fiatWithdraw } = useBaasDemo();
 
-  const senders = useMemo(
-    () => globalAccounts.filter((account) => account.fiatBalances.length > 0),
+  const activeAccounts = useMemo(
+    () => globalAccounts.filter((account) => account.status === 'active'),
     [globalAccounts]
   );
-  const [activeStep, setActiveStep] = useState(0);
-  const [senderId, setSenderId] = useState(senders[0]?.id ?? '');
-  const [payeeId, setPayeeId] = useState(externalPayees[0]?.id ?? '');
-  const [receivingAccountId, setReceivingAccountId] = useState(
-    externalPayees[0]?.accounts[0]?.id ?? ''
-  );
-  const [balanceCurrency, setBalanceCurrency] = useState<Balance['currency']>('USD');
-  const [amount, setAmount] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [memo, setMemo] = useState('');
-  const [createdPayout, setCreatedPayout] = useState<PayoutTransaction | null>(null);
-  const [selectedPayout, setSelectedPayout] = useState<PayoutTransaction | null>(null);
-  const wizardTopRef = useRef<HTMLDivElement | null>(null);
-  const didMountRef = useRef(false);
 
-  const selectedSender = senders.find((account) => account.id === senderId) ?? senders[0];
-  const selectedEntity = selectedSender
-    ? entities.find((entity) => entity.id === selectedSender.entityId)
-    : undefined;
-  const selectedPayee = externalPayees.find((payee) => payee.id === payeeId);
-  const receivingAccounts = selectedPayee?.accounts ?? [];
-  const selectedReceivingAccount = receivingAccounts.find(
-    (account) => account.id === receivingAccountId
-  );
-  const selectedBalance =
-    selectedSender?.fiatBalances.find((balance) => balance.currency === balanceCurrency) ??
-    selectedSender?.fiatBalances[0];
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState<FiatForm>(() => {
+    const first = globalAccounts.find((account) => account.status === 'active');
+    return {
+      accountId: first?.id ?? '',
+      currency: (first?.fiatBalances[0]?.currency ?? 'USD') as CurrencyCode,
+      amount: 1000,
+      simulateFailed: false,
+      receivingAccountId: '',
+      reference: '',
+    };
+  });
 
   useEffect(() => {
-    if (!senderId && senders[0]) {
-      setSenderId(senders[0].id);
-      setBalanceCurrency(senders[0].fiatBalances[0]?.currency ?? 'USD');
-    }
-  }, [senderId, senders]);
-
-  useEffect(() => {
-    if (!payeeId && externalPayees[0]) {
-      setPayeeId(externalPayees[0].id);
-      setReceivingAccountId(externalPayees[0].accounts[0]?.id ?? '');
-    }
-  }, [externalPayees, payeeId]);
-
-  useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
+    if (form.accountId || activeAccounts.length === 0) {
       return;
     }
 
-    wizardTopRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  }, [activeStep]);
+    const first = activeAccounts[0];
+    setForm((current) => ({
+      ...current,
+      accountId: first.id,
+      currency: (first.fiatBalances[0]?.currency ?? current.currency) as CurrencyCode,
+    }));
+  }, [activeAccounts, form.accountId]);
 
-  const numericAmount = Number(amount);
-  const fee = numericAmount > 0 ? Math.max(5, Number((numericAmount * 0.001).toFixed(2))) : 0;
-  const payeeGets = numericAmount > 0 ? Number(Math.max(0, numericAmount - fee).toFixed(2)) : 0;
-  const balanceAfter =
-    selectedBalance && numericAmount > 0
-      ? Number((selectedBalance.available - numericAmount).toFixed(2))
-      : (selectedBalance?.available ?? 0);
-  const amountError =
-    amount && numericAmount <= 0
-      ? '金额必须大于 0'
-      : selectedBalance && numericAmount > selectedBalance.available
-        ? '金额超过可用余额'
-        : '';
+  const selectedAccount = useMemo(
+    () => activeAccounts.find((account) => account.id === form.accountId),
+    [activeAccounts, form.accountId]
+  );
 
-  const canGoNext =
-    !!selectedSender &&
-    selectedPayee?.status === 'active' &&
-    selectedReceivingAccount?.status === 'active';
-  const canReview = canGoNext && !!purpose && !!amount && !amountError;
+  const currencyOptions = useMemo(() => selectedAccount?.fiatBalances ?? [], [selectedAccount]);
+  const currencySelectValue = currencyOptions.some((balance) => balance.currency === form.currency)
+    ? form.currency
+    : '';
 
-  const payoutStats = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const todayAmount = payoutTransactions
-      .filter((payout) => payout.createdAt.slice(0, 10) === today && payout.status !== 'failed')
-      .reduce((sum, payout) => sum + payout.amount, 0);
-
-    return [
-      {
-        title: '今日 Payout 金额',
-        value: formatMoney(todayAmount, 'USD'),
-        icon: 'solar:wad-of-money-bold' as const,
-        color: 'primary' as const,
-      },
-      {
-        title: '待处理 Payout',
-        value: payoutTransactions.filter((payout) =>
-          ['pending', 'processing'].includes(payout.status)
-        ).length,
-        icon: 'solar:restart-bold' as const,
-        color: 'warning' as const,
-      },
-      {
-        title: '可用 Payee 数量',
-        value: externalPayees.filter((payee) => payee.status === 'active').length,
-        icon: 'solar:users-group-rounded-bold' as const,
-        color: 'success' as const,
-      },
-      {
-        title: '异常交易数量',
-        value: payoutTransactions.filter((payout) => payout.status === 'failed').length,
-        icon: 'solar:danger-triangle-bold' as const,
-        color: 'error' as const,
-      },
-    ];
-  }, [externalPayees, payoutTransactions]);
-
-  const handleSelectPayee = (payee: ExternalPayee) => {
-    if (payee.status !== 'active') {
+  useEffect(() => {
+    if (currencyOptions.length === 0 || currencySelectValue) {
       return;
     }
 
-    setPayeeId(payee.id);
-    setReceivingAccountId(payee.accounts.find((account) => account.status === 'active')?.id ?? '');
-  };
+    setForm((current) => ({
+      ...current,
+      currency: currencyOptions[0].currency,
+      receivingAccountId: '',
+    }));
+  }, [currencyOptions, currencySelectValue]);
 
-  const resetFlow = () => {
-    setActiveStep(0);
-    setAmount('');
-    setPurpose('');
-    setMemo('');
-    setCreatedPayout(null);
-  };
+  const availableBalance = useMemo(() => {
+    const balance = selectedAccount?.fiatBalances.find((item) => item.currency === form.currency);
+    return balance?.available ?? 0;
+  }, [selectedAccount, form.currency]);
 
-  const handleConfirm = async () => {
-    if (
-      !selectedSender ||
-      !selectedEntity ||
-      !selectedPayee ||
-      !selectedReceivingAccount ||
-      !selectedBalance
-    ) {
+  const whitelistAccountOptions = useMemo<WhitelistAccountOption[]>(
+    () =>
+      externalPayees
+        .filter((payee) => payee.status === 'active')
+        .flatMap((payee) =>
+          payee.accounts
+            .filter((account) => account.status === 'active' && account.currency === form.currency)
+            .map((account) => ({ payee, account }))
+        ),
+    [externalPayees, form.currency]
+  );
+
+  const selectedWhitelistAccount = useMemo(
+    () =>
+      whitelistAccountOptions.find((option) => option.account.id === form.receivingAccountId) ??
+      null,
+    [form.receivingAccountId, whitelistAccountOptions]
+  );
+  const receivingAccountSelectValue = selectedWhitelistAccount ? form.receivingAccountId : '';
+
+  useEffect(() => {
+    if (whitelistAccountOptions.length === 0 || receivingAccountSelectValue) {
       return;
     }
 
-    const payout = await createFiatPayout({
-      senderId: selectedSender.id,
-      senderName: selectedSender.name,
-      payerName: selectedEntity.name,
-      payeeId: selectedPayee.id,
-      payeeName: selectedPayee.name,
-      payeeType: selectedPayee.type,
-      receivingAccountId: selectedReceivingAccount.id,
-      bankName: selectedReceivingAccount.bankName,
-      accountNumber: selectedReceivingAccount.accountNumber,
-      rail: selectedReceivingAccount.rail,
-      currency: selectedBalance.currency,
-      amount: numericAmount,
-      fee,
-      payeeGets,
-      purpose,
-      memo,
-      estimatedArrival: ESTIMATED_ARRIVAL,
-    });
+    setForm((current) => ({
+      ...current,
+      receivingAccountId: whitelistAccountOptions[0]?.account.id ?? '',
+    }));
+  }, [receivingAccountSelectValue, whitelistAccountOptions]);
 
-    setCreatedPayout(payout);
-    toast.success('Payout 已提交');
+  const fee = calcFee(form.amount);
+  const netDebit = form.amount + fee;
+  const amountInvalid = form.amount <= 0 || form.amount > availableBalance;
+  const submitDisabled = !form.accountId || amountInvalid || !selectedWhitelistAccount;
+
+  const handleAccountChange = (accountId: string) => {
+    const account = activeAccounts.find((item) => item.id === accountId);
+    const nextCurrency = (account?.fiatBalances[0]?.currency ?? form.currency) as CurrencyCode;
+    setForm((current) => ({
+      ...current,
+      accountId,
+      currency: nextCurrency,
+      receivingAccountId: '',
+    }));
   };
 
-  const renderRecipientDetails = () => (
-    <PayoutWizardStepLayout
-      actions={
-        <WizardActions
-          actions={[
-            {
-              label: 'Next',
-              variant: 'contained',
-              disabled: !canGoNext,
-              onClick: () => setActiveStep(1),
-              sx: { minWidth: { sm: PAYOUT_WIZARD_LAYOUT.primaryButtonWidth } },
-            },
-          ]}
-        />
+  const handleSubmit = async () => {
+    if (!selectedWhitelistAccount) {
+      toast.error('请选择匹配的白名单收款账户');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { payee, account } = selectedWhitelistAccount;
+      const destination = [
+        account.country,
+        account.bankName,
+        account.rail,
+        maskAccount(account.accountNumber, account.accountLast4),
+      ]
+        .filter(Boolean)
+        .join(' · ');
+
+      const result = await fiatWithdraw({
+        accountId: form.accountId,
+        amount: form.amount,
+        currency: form.currency,
+        payeeName: payee.name,
+        destination,
+      });
+
+      setConfirmOpen(false);
+
+      if (!result) {
+        toast.error('法币出金提交失败：未找到关联实体');
+        return;
       }
-    >
-      <Stack spacing={3} sx={{ height: 1 }}>
-        <WizardSectionCard
-          title="Sender Information"
-          subtitle="Select the sub merchant initiating this payout."
-          minHeight={172}
-        >
-          <Grid container spacing={2} alignItems="flex-start">
-            <Grid size={{ xs: 12, md: 8 }}>
-              <TextField
-                select
-                fullWidth
-                required
-                label="Sender / Sub Merchant"
-                value={senderId}
-                sx={FIELD_SX}
-                onChange={(event) => {
-                  const nextSender = senders.find((sender) => sender.id === event.target.value);
-                  setSenderId(event.target.value);
-                  setBalanceCurrency(nextSender?.fiatBalances[0]?.currency ?? 'USD');
-                }}
-              >
-                {senders.map((sender) => (
-                  <MenuItem key={sender.id} value={sender.id}>
-                    {sender.name} ({sender.accountId})
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
 
-            <Grid size={{ xs: 12, md: 4 }}>
-              <Paper
-                variant="outlined"
-                sx={{
-                  px: 2,
-                  py: 1.5,
-                  minHeight: 56,
-                  borderRadius: 1,
-                  bgcolor: 'background.neutral',
-                }}
-              >
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  Merchant / Account ID
-                </Typography>
-                <Typography variant="subtitle2" noWrap>
-                  {selectedEntity?.name ?? '-'}
-                </Typography>
-                <Stack direction="row" alignItems="center">
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }} noWrap>
-                    {selectedSender?.accountId ?? '-'}
-                  </Typography>
-                  <CopyValueButton value={selectedSender?.accountId} label="Account ID" />
-                </Stack>
-              </Paper>
-            </Grid>
-          </Grid>
-        </WizardSectionCard>
+      const transactionHref = buildQueryHref(paths.dashboard.baas.transactions, {
+        accountId: form.accountId,
+        transactionId: result.id,
+      });
 
-        <WizardSectionCard
-          title="Payee Information"
-          subtitle="Select a verified counterparty and one active receiving account."
-          minHeight={{ xs: 640, md: 478 }}
-          sx={{ flex: 1 }}
-        >
-          <Grid
-            container
-            sx={{
-              border: (theme) => `1px solid ${theme.vars.palette.divider}`,
-              borderRadius: 1,
-              overflow: 'hidden',
-              minHeight: {
-                xs: PAYOUT_WIZARD_LAYOUT.listHeaderHeight + PAYOUT_WIZARD_LAYOUT.listHeight.xs,
-                md: PAYOUT_WIZARD_LAYOUT.listHeaderHeight + PAYOUT_WIZARD_LAYOUT.listHeight.md,
-              },
-            }}
-          >
-            <Grid
-              size={{ xs: 12, md: 6 }}
-              sx={{
-                borderRight: { md: (theme) => `1px solid ${theme.vars.palette.divider}` },
-                borderBottom: { xs: (theme) => `1px solid ${theme.vars.palette.divider}`, md: 0 },
-              }}
-            >
-              <ListHeader
-                title={`Counterparty (${externalPayees.length} avail.)`}
-                action={
-                  <Stack direction="row" spacing={1} sx={{ color: 'text.secondary' }}>
-                    <Iconify icon="solar:copy-bold" width={18} />
-                    <Iconify icon="solar:list-bold" width={18} />
-                  </Stack>
-                }
-              />
-              <Box sx={{ height: PAYOUT_WIZARD_LAYOUT.listHeight, overflowY: 'auto' }}>
-                {externalPayees.length ? (
-                  externalPayees.map((payee) => (
-                    <CounterpartyListItem
-                      key={payee.id}
-                      payee={payee}
-                      selected={payee.id === payeeId}
-                      onSelect={() => handleSelectPayee(payee)}
-                    />
-                  ))
-                ) : (
-                  <EmptyListState
-                    title="No counterparty"
-                    description="Create a payee before starting a payout."
-                  />
-                )}
-              </Box>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 6 }}>
-              <ListHeader
-                title={`Receiving Account (${receivingAccounts.length} avail.)`}
-                action={
-                  <IconButton size="small" aria-label="Add receiving account">
-                    <Iconify icon="mingcute:add-line" width={18} />
-                  </IconButton>
-                }
-              />
-              <Box sx={{ height: PAYOUT_WIZARD_LAYOUT.listHeight, overflowY: 'auto' }}>
-                {receivingAccounts.length ? (
-                  receivingAccounts.map((account) => (
-                    <ReceivingAccountItem
-                      key={account.id}
-                      account={account}
-                      selected={account.id === receivingAccountId}
-                      onSelect={() => setReceivingAccountId(account.id)}
-                    />
-                  ))
-                ) : (
-                  <EmptyListState
-                    title="No receiving account"
-                    description="This counterparty does not have an available fiat receiving account."
-                  />
-                )}
-              </Box>
-            </Grid>
-          </Grid>
-        </WizardSectionCard>
-      </Stack>
-    </PayoutWizardStepLayout>
-  );
-
-  const renderPayoutDetails = () => (
-    <PayoutWizardStepLayout
-      actions={
-        <WizardActions
-          actions={[
-            {
-              label: 'Back',
-              variant: 'outlined',
-              color: 'inherit',
-              onClick: () => setActiveStep(0),
-            },
-            {
-              label: 'Review payout',
-              variant: 'contained',
-              disabled: !canReview,
-              onClick: () => setActiveStep(2),
-            },
-          ]}
-        />
+      if (form.simulateFailed) {
+        toast.error('法币出金已提交，但外部 Payee 调用模拟失败', {
+          action: { label: '查看流水', onClick: () => router.push(transactionHref) },
+        });
+      } else {
+        toast.success('法币出金已提交，外部 Payee 调用已模拟', {
+          action: { label: '查看流水', onClick: () => router.push(transactionHref) },
+        });
       }
-    >
-      <Stack spacing={3}>
-        <WizardSectionCard
-          title="Payout Details"
-          subtitle="Enter the amount, funding balance, purpose, and payout memo."
-          minHeight={316}
-        >
-          <Grid container spacing={2.25}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                fullWidth
-                disabled
-                label="Account to Payout"
-                value={`${selectedSender?.name ?? '-'} (${selectedSender?.accountId ?? '-'})`}
-                sx={FIELD_SX}
-              />
-              <Typography
-                variant="caption"
-                sx={{ mt: 1, display: 'block', color: 'text.secondary' }}
-              >
-                Payer name: {selectedEntity?.name ?? '-'}
-              </Typography>
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                select
-                fullWidth
-                required
-                label="Select Balance"
-                value={selectedBalance?.currency ?? balanceCurrency}
-                sx={FIELD_SX}
-                onChange={(event) => setBalanceCurrency(event.target.value as Balance['currency'])}
-              >
-                {(selectedSender?.fiatBalances ?? []).map((balance) => (
-                  <MenuItem key={balance.currency} value={balance.currency}>
-                    {balance.currency} · {formatMoney(balance.available, balance.currency)}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                fullWidth
-                required
-                label="You Send"
-                type="number"
-                value={amount}
-                error={!!amountError}
-                helperText={
-                  amountError ||
-                  `Balance after payout: ${formatMoney(balanceAfter, selectedBalance?.currency ?? 'USD')}`
-                }
-                sx={FIELD_SX}
-                onChange={(event) => setAmount(event.target.value)}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      {selectedBalance?.currency ?? 'USD'}
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                fullWidth
-                disabled
-                label="Payee Gets"
-                value={payeeGets > 0 ? payeeGets : ''}
-                placeholder="Calculated after amount"
-                sx={FIELD_SX}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      {selectedBalance?.currency ?? 'USD'}
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                select
-                fullWidth
-                required
-                label="Purpose"
-                value={purpose}
-                error={!purpose && !!amount}
-                helperText={!purpose && !!amount ? 'Purpose 为必填项' : ' '}
-                sx={FIELD_SX}
-                onChange={(event) => setPurpose(event.target.value)}
-              >
-                {PURPOSE_OPTIONS.map((option) => (
-                  <MenuItem key={option} value={option}>
-                    {option}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                fullWidth
-                label="Memo"
-                value={memo}
-                helperText=" "
-                sx={FIELD_SX}
-                onChange={(event) => setMemo(event.target.value)}
-              />
-            </Grid>
-          </Grid>
-        </WizardSectionCard>
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
-        <WizardSectionCard
-          title="Payee Summary"
-          subtitle="Recipient and receiving account are locked from the previous step."
-          minHeight={190}
-        >
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Paper
-                variant="outlined"
-                sx={{ p: 2, height: 1, borderRadius: 1, bgcolor: 'background.neutral' }}
-              >
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  Counterparty
-                </Typography>
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
-                  <Typography variant="subtitle2">{selectedPayee?.name ?? '-'}</Typography>
-                  {selectedPayee && <StatusChip status={selectedPayee.status} />}
-                </Stack>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  {selectedPayee ? payeeTypeLabel(selectedPayee.type) : '-'} · Quota{' '}
-                  {formatMoney(
-                    selectedPayee?.availableQuota ?? 0,
-                    selectedPayee?.quotaCurrency ?? 'USD'
-                  )}
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Paper
-                variant="outlined"
-                sx={{ p: 2, height: 1, borderRadius: 1, bgcolor: 'background.neutral' }}
-              >
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  Receiving Account
-                </Typography>
-                <Typography variant="subtitle2" sx={{ mt: 0.5 }}>
-                  {selectedReceivingAccount?.bankName ?? '-'}
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  {selectedReceivingAccount
-                    ? `${selectedReceivingAccount.currency} · ${selectedReceivingAccount.rail} · ${maskAccount(
-                        selectedReceivingAccount.accountNumber
-                      )}`
-                    : '-'}
-                </Typography>
-              </Paper>
-            </Grid>
-          </Grid>
-        </WizardSectionCard>
-
-        <Paper
-          variant="outlined"
-          sx={{
-            px: { xs: 2, md: 3 },
-            py: 1.5,
-            minHeight: 64,
-            display: 'grid',
-            alignItems: 'center',
-            borderRadius: 1,
-            bgcolor: 'background.paper',
-            boxShadow: (theme) => theme.customShadows.z4,
-            gridTemplateColumns: {
-              xs: 'repeat(2, minmax(0, 1fr))',
-              md: 'repeat(4, minmax(0, 1fr))',
-            },
-            gap: 2,
-          }}
-        >
-          <QuoteMetric
-            label="Exchange rate"
-            value={`1 ${selectedBalance?.currency ?? 'USD'} = ${QUOTE_RATE}`}
-          />
-          <QuoteMetric label="Fee" value={formatMoney(fee, selectedBalance?.currency ?? 'USD')} />
-          <QuoteMetric label="Estimated arrival" value={ESTIMATED_ARRIVAL} />
-          <QuoteMetric label="Quote" value={QUOTE_FRESHNESS} />
-        </Paper>
-      </Stack>
-    </PayoutWizardStepLayout>
+  const fiatTransactions = useMemo(
+    () => transactions.filter((transaction) => transaction.type === 'fiat_withdraw'),
+    [transactions]
   );
-
-  const renderReview = () => (
-    <PayoutWizardStepLayout
-      actions={
-        createdPayout ? (
-          <WizardActions
-            actions={[
-              {
-                label: 'New Payout',
-                variant: 'outlined',
-                color: 'inherit',
-                onClick: resetFlow,
-              },
-              {
-                label: 'View Transaction',
-                variant: 'contained',
-                onClick: () => setSelectedPayout(createdPayout),
-              },
-            ]}
-          />
-        ) : (
-          <WizardActions
-            actions={[
-              {
-                label: 'Back',
-                variant: 'outlined',
-                color: 'inherit',
-                onClick: () => setActiveStep(1),
-              },
-              {
-                label: 'Confirm Payout',
-                variant: 'contained',
-                onClick: handleConfirm,
-              },
-            ]}
-          />
-        )
-      }
-    >
-      <Stack spacing={3}>
-        <WizardSectionCard
-          title={createdPayout ? 'Payout Submitted' : 'Review Payout'}
-          subtitle={
-            createdPayout
-              ? 'The mock payout has been accepted and added to transaction history.'
-              : 'Confirm the sender, recipient, receiving account, and amount before submission.'
-          }
-          minHeight={620}
-        >
-          {createdPayout && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              Reference ID {createdPayout.referenceId} has been generated.
-            </Alert>
-          )}
-
-          <Paper
-            variant="outlined"
-            sx={{
-              p: { xs: 2, md: 2.5 },
-              mb: 2.5,
-              borderRadius: 1,
-              bgcolor: 'background.neutral',
-              display: 'grid',
-              gap: 2,
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
-            }}
-          >
-            <QuoteMetric
-              label="You Send"
-              value={formatMoney(numericAmount, selectedBalance?.currency ?? 'USD')}
-            />
-            <QuoteMetric label="Fee" value={formatMoney(fee, selectedBalance?.currency ?? 'USD')} />
-            <QuoteMetric
-              label="Payee Gets"
-              value={formatMoney(payeeGets, selectedBalance?.currency ?? 'USD')}
-            />
-            <QuoteMetric label="Estimated arrival" value={ESTIMATED_ARRIVAL} />
-          </Paper>
-
-          <Box sx={{ maxHeight: { md: 420 }, overflowY: { md: 'auto' }, pr: { md: 1 } }}>
-            <Grid container spacing={2.5}>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Sender Information
-                </Typography>
-                <ReviewRows
-                  rows={[
-                    { label: 'Sender', value: selectedSender?.name ?? '-' },
-                    { label: 'Payer name', value: selectedEntity?.name ?? '-' },
-                    {
-                      label: 'Account ID',
-                      value: (
-                        <Stack direction="row" alignItems="center" justifyContent="flex-end">
-                          {selectedSender?.accountId ?? '-'}
-                          <CopyValueButton value={selectedSender?.accountId} label="Account ID" />
-                        </Stack>
-                      ),
-                    },
-                    { label: 'Currency', value: selectedBalance?.currency ?? '-' },
-                  ]}
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Payee Information
-                </Typography>
-                <ReviewRows
-                  rows={[
-                    { label: 'Payee', value: selectedPayee?.name ?? '-' },
-                    {
-                      label: 'Payee type',
-                      value: selectedPayee ? payeeTypeLabel(selectedPayee.type) : '-',
-                    },
-                    {
-                      label: 'Payee status',
-                      value: selectedPayee ? <StatusChip status={selectedPayee.status} /> : '-',
-                    },
-                    {
-                      label: 'Quota',
-                      value: formatMoney(
-                        selectedPayee?.availableQuota ?? 0,
-                        selectedPayee?.quotaCurrency ?? 'USD'
-                      ),
-                    },
-                  ]}
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Receiving Account
-                </Typography>
-                <ReviewRows
-                  rows={[
-                    { label: 'Receiving bank', value: selectedReceivingAccount?.bankName ?? '-' },
-                    { label: 'Rail', value: selectedReceivingAccount?.rail ?? '-' },
-                    {
-                      label: 'Account number',
-                      value: (
-                        <Stack direction="row" alignItems="center" justifyContent="flex-end">
-                          {selectedReceivingAccount?.accountNumber ?? '-'}
-                          <CopyValueButton
-                            value={selectedReceivingAccount?.accountNumber}
-                            label="Account number"
-                          />
-                        </Stack>
-                      ),
-                    },
-                    { label: 'Country', value: selectedReceivingAccount?.country ?? '-' },
-                  ]}
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Amount Breakdown
-                </Typography>
-                <ReviewRows
-                  rows={[
-                    {
-                      label: 'You Send',
-                      value: formatMoney(numericAmount, selectedBalance?.currency ?? 'USD'),
-                      emphasized: true,
-                    },
-                    { label: 'Fee', value: formatMoney(fee, selectedBalance?.currency ?? 'USD') },
-                    {
-                      label: 'Payee Gets',
-                      value: formatMoney(payeeGets, selectedBalance?.currency ?? 'USD'),
-                      emphasized: true,
-                    },
-                    {
-                      label: 'Balance after',
-                      value: formatMoney(balanceAfter, selectedBalance?.currency ?? 'USD'),
-                    },
-                  ]}
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Purpose & Memo
-                </Typography>
-                <ReviewRows
-                  rows={[
-                    { label: 'Purpose', value: purpose },
-                    { label: 'Memo', value: memo || '-' },
-                  ]}
-                />
-              </Grid>
-
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Quote & Reference
-                </Typography>
-                <ReviewRows
-                  rows={[
-                    { label: 'Estimated arrival', value: ESTIMATED_ARRIVAL },
-                    { label: 'Quote', value: QUOTE_FRESHNESS },
-                    {
-                      label: 'Exchange rate',
-                      value: `1 ${selectedBalance?.currency ?? 'USD'} = ${QUOTE_RATE}`,
-                    },
-                    {
-                      label: 'Reference ID',
-                      value: (
-                        <Stack direction="row" alignItems="center" justifyContent="flex-end">
-                          {createdPayout?.referenceId ?? '提交后生成'}
-                          <CopyValueButton
-                            value={createdPayout?.referenceId}
-                            label="Reference ID"
-                          />
-                        </Stack>
-                      ),
-                    },
-                  ]}
-                />
-              </Grid>
-            </Grid>
-          </Box>
-        </WizardSectionCard>
-      </Stack>
-    </PayoutWizardStepLayout>
-  );
-
-  const renderPayoutDrawer = () =>
-    selectedPayout && (
-      <DetailDrawer
-        open={!!selectedPayout}
-        title={selectedPayout.referenceId}
-        subtitle={selectedPayout.payeeName}
-        onClose={() => setSelectedPayout(null)}
-      >
-        <InfoSection
-          title="Payout Summary"
-          rows={[
-            { label: 'Status', value: <StatusChip status={selectedPayout.status} /> },
-            { label: 'Reference ID', value: selectedPayout.referenceId },
-            { label: 'Estimated arrival', value: selectedPayout.estimatedArrival },
-            { label: 'Created Time', value: formatDateTime(selectedPayout.createdAt) },
-          ]}
-        />
-        <InfoSection
-          title="Sender Information"
-          rows={[
-            { label: 'Sender', value: selectedPayout.senderName },
-            { label: 'Payer name', value: selectedPayout.payerName },
-          ]}
-        />
-        <InfoSection
-          title="Payee Information"
-          rows={[
-            { label: 'Payee', value: selectedPayout.payeeName },
-            { label: 'Payee type', value: payeeTypeLabel(selectedPayout.payeeType) },
-            { label: 'Receiving bank', value: selectedPayout.bankName },
-            { label: 'Account number', value: maskAccount(selectedPayout.accountNumber) },
-            { label: 'Rail', value: selectedPayout.rail },
-          ]}
-        />
-        <InfoSection
-          title="Amount Breakdown"
-          rows={[
-            {
-              label: 'You Send',
-              value: formatMoney(selectedPayout.amount, selectedPayout.currency),
-            },
-            { label: 'Fee', value: formatMoney(selectedPayout.fee, selectedPayout.currency) },
-            {
-              label: 'Payee Gets',
-              value: formatMoney(selectedPayout.payeeGets, selectedPayout.currency),
-            },
-            { label: 'Purpose', value: selectedPayout.purpose },
-            { label: 'Memo', value: selectedPayout.memo ?? '-' },
-          ]}
-        />
-        <Stack spacing={1}>
-          <Typography variant="subtitle2">Status Timeline</Typography>
-          <Timeline
-            sx={{
-              m: 0,
-              p: 0,
-              [`& .${timelineItemClasses.root}:before`]: { flex: 0, p: 0 },
-            }}
-          >
-            {selectedPayout.timeline.map((event, index) => (
-              <TimelineItem key={`${event.label}-${event.at}`}>
-                <TimelineSeparator>
-                  <TimelineDot color={getTimelineDotColor(event.status)} />
-                  {index < selectedPayout.timeline.length - 1 && <TimelineConnector />}
-                </TimelineSeparator>
-                <TimelineContent sx={{ pb: 2 }}>
-                  <Typography variant="body2">{event.label}</Typography>
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                    {formatDateTime(event.at)}
-                  </Typography>
-                </TimelineContent>
-              </TimelineItem>
-            ))}
-          </Timeline>
-        </Stack>
-        <DataTable
-          title="Mock API Logs"
-          rows={selectedPayout.apiLogs}
-          rowKey={(row) => row.id}
-          columns={[
-            { id: 'method', label: 'Method', width: 90, render: (row) => row.method },
-            { id: 'endpoint', label: 'Endpoint', render: (row) => row.endpoint },
-            { id: 'status', label: 'Status', width: 90, render: (row) => row.statusCode },
-          ]}
-        />
-      </DetailDrawer>
-    );
 
   return (
     <DashboardContent maxWidth="xl">
       <CustomBreadcrumbs
-        heading="法币操作"
+        heading="法币出金"
         links={[
           { name: 'Dashboard', href: paths.dashboard.root },
           { name: 'BaaS Demo', href: paths.dashboard.baas.root },
-          { name: '法币操作' },
+          { name: '法币出金' },
         ]}
-        sx={{ mb: 2 }}
+        sx={{ mb: { xs: 3, md: 5 } }}
       />
 
-      <Typography variant="body2" sx={{ mb: 3, color: 'text.secondary', maxWidth: 860 }}>
-        模拟 Global Account 的法币出金、外部 Payee
-        选择、收款账户选择、金额填写、确认提交与交易状态追踪。
-      </Typography>
+      <ActionBar
+        title="法币出金"
+        description="选择已激活的 Global Account，填写收款方信息，系统先模拟外部 Payee 创建，再生成出金交易。"
+      />
 
-      {(loading || error) && (
-        <Alert severity={error ? 'error' : 'info'} sx={{ mb: 3 }}>
-          {error || 'Demo 数据加载中...'}
-        </Alert>
-      )}
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, lg: 5 }}>
+          <Card>
+            <CardHeader
+              title="法币出金"
+              subheader="资金将从所选账户的可用余额扣除"
+              avatar={<Iconify icon="solar:wad-of-money-bold" width={28} />}
+            />
+            <CardContent>
+              <Stack spacing={2.5}>
+                <TextField
+                  select
+                  fullWidth
+                  size="small"
+                  label="出金账户"
+                  value={form.accountId}
+                  onChange={(event) => handleAccountChange(event.target.value)}
+                  helperText={
+                    selectedAccount
+                      ? `可用余额：${formatMoney(availableBalance, form.currency)}`
+                      : '请选择一个已激活的账户'
+                  }
+                >
+                  {activeAccounts.map((account) => (
+                    <MenuItem key={account.id} value={account.id}>
+                      {account.name}
+                    </MenuItem>
+                  ))}
+                </TextField>
 
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        {payoutStats.map((stat) => (
-          <Grid key={stat.title} size={{ xs: 12, sm: 6, md: 3 }}>
-            <StatCard {...stat} />
-          </Grid>
-        ))}
+                <Stack direction="row" spacing={2}>
+                  <TextField
+                    select
+                    fullWidth
+                    size="small"
+                    label="币种"
+                    value={currencySelectValue}
+                    disabled={currencyOptions.length === 0}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        currency: event.target.value as CurrencyCode,
+                        receivingAccountId: '',
+                      })
+                    }
+                  >
+                    {currencyOptions.map((balance) => (
+                      <MenuItem key={balance.currency} value={balance.currency}>
+                        {balance.currency}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="number"
+                    label="出金金额"
+                    value={form.amount}
+                    onChange={(event) => setForm({ ...form, amount: Number(event.target.value) })}
+                    error={amountInvalid}
+                    helperText={form.amount > availableBalance ? '金额超出可用余额' : '最低费用 5'}
+                  />
+                </Stack>
+
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={form.simulateFailed}
+                      onChange={(event) =>
+                        setForm({ ...form, simulateFailed: event.target.checked })
+                      }
+                    />
+                  }
+                  label="模拟外部 Payee 调用失败"
+                />
+
+                <Divider />
+
+                <Card variant="outlined" sx={{ boxShadow: 'none' }}>
+                  <CardHeader
+                    title="收款方"
+                    subheader="选择与出金币种匹配的白名单账户"
+                    titleTypographyProps={{ variant: 'subtitle1' }}
+                  />
+                  <CardContent>
+                    <Stack spacing={2}>
+                      <TextField
+                        select
+                        fullWidth
+                        size="small"
+                        label="白名单账户"
+                        value={receivingAccountSelectValue}
+                        disabled={whitelistAccountOptions.length === 0}
+                        helperText={
+                          whitelistAccountOptions.length
+                            ? '仅显示与当前出金币种匹配的已激活收款账户'
+                            : '当前出金币种暂无可用白名单账户'
+                        }
+                        onChange={(event) =>
+                          setForm({ ...form, receivingAccountId: event.target.value })
+                        }
+                      >
+                        {whitelistAccountOptions.map(({ payee, account }) => (
+                          <MenuItem key={account.id} value={account.id}>
+                            {payee.name} · {account.bankName} · {account.rail} ·{' '}
+                            {maskAccount(account.accountNumber, account.accountLast4)}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+
+                      <Stack direction="row" spacing={2}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="银行国家/地区"
+                          value={selectedWhitelistAccount?.account.country ?? ''}
+                          slotProps={{ input: { readOnly: true } }}
+                        />
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="银行名称"
+                          value={selectedWhitelistAccount?.account.bankName ?? ''}
+                          slotProps={{ input: { readOnly: true } }}
+                        />
+                      </Stack>
+
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="收款人名称"
+                        value={selectedWhitelistAccount?.payee.name ?? ''}
+                        slotProps={{ input: { readOnly: true } }}
+                      />
+
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="账号"
+                        value={selectedWhitelistAccount?.account.accountNumber ?? ''}
+                        slotProps={{ input: { readOnly: true } }}
+                      />
+
+                      <Stack direction="row" spacing={2}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="收款通道"
+                          value={selectedWhitelistAccount?.account.rail ?? ''}
+                          slotProps={{ input: { readOnly: true } }}
+                        />
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="账户尾号"
+                          value={selectedWhitelistAccount?.account.accountLast4 ?? ''}
+                          slotProps={{ input: { readOnly: true } }}
+                        />
+                      </Stack>
+
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="备注"
+                        value={form.reference}
+                        onChange={(event) => setForm({ ...form, reference: event.target.value })}
+                      />
+                    </Stack>
+                  </CardContent>
+                </Card>
+
+                <Card variant="outlined" sx={{ boxShadow: 'none', bgcolor: 'background.neutral' }}>
+                  <CardContent>
+                    <Stack spacing={1.25}>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          出金金额
+                        </Typography>
+                        <Typography variant="body2">
+                          {formatMoney(form.amount, form.currency)}
+                        </Typography>
+                      </Stack>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          手续费 (0.1%，最低 5)
+                        </Typography>
+                        <Typography variant="body2">{formatMoney(fee, form.currency)}</Typography>
+                      </Stack>
+                      <Divider sx={{ borderStyle: 'dashed' }} />
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="subtitle2">净扣款</Typography>
+                        <Typography variant="subtitle2">
+                          {formatMoney(netDebit, form.currency)}
+                        </Typography>
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+                </Card>
+
+                <Button
+                  fullWidth
+                  size="large"
+                  variant="contained"
+                  startIcon={<Iconify icon="solar:export-bold" />}
+                  onClick={() => setConfirmOpen(true)}
+                  disabled={submitDisabled}
+                >
+                  提交出金
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid size={{ xs: 12, lg: 7 }}>
+          <Stack spacing={3}>
+            <DataTable
+              title="外部白名单账户列表"
+              rows={whitelistAccountOptions}
+              rowKey={(row) => row.account.id}
+              emptyText="暂无外部白名单账户"
+              columns={[
+                { id: 'name', label: '白名单账户', render: (row) => row.payee.name },
+                { id: 'currency', label: '币种', render: (row) => row.account.currency },
+                {
+                  id: 'bank',
+                  label: '银行信息',
+                  render: (row) => `${row.account.country ?? '-'} · ${row.account.bankName}`,
+                },
+                {
+                  id: 'accountNumber',
+                  label: '账号',
+                  render: (row) => maskAccount(row.account.accountNumber, row.account.accountLast4),
+                },
+                { id: 'rail', label: '收款通道', render: (row) => row.account.rail },
+                {
+                  id: 'status',
+                  label: '状态',
+                  render: (row) => <StatusChip status={row.account.status} />,
+                },
+              ]}
+            />
+
+            <DataTable
+              title="法币出金交易"
+              rows={fiatTransactions}
+              rowKey={(row) => row.id}
+              emptyText="暂无法币出金交易"
+              columns={[
+                { id: 'referenceId', label: 'Reference ID', render: (row) => row.referenceId },
+                {
+                  id: 'amount',
+                  label: '金额',
+                  render: (row) => formatMoney(row.amount, row.currency),
+                },
+                { id: 'currency', label: '币种', render: (row) => row.currency },
+                { id: 'destination', label: '收款方', render: (row) => row.destination },
+                {
+                  id: 'status',
+                  label: '状态',
+                  render: (row) => <StatusChip status={row.status} />,
+                },
+                {
+                  id: 'createdAt',
+                  label: '创建时间',
+                  render: (row) => formatDateTime(row.createdAt),
+                },
+              ]}
+            />
+          </Stack>
+        </Grid>
       </Grid>
 
-      <Box ref={wizardTopRef}>
-        <PayoutWizardShell>
-          <PayoutWizardStepper steps={STEPS} activeStep={activeStep} completed={!!createdPayout} />
-
-          {activeStep === 0 && renderRecipientDetails()}
-          {activeStep === 1 && renderPayoutDetails()}
-          {activeStep === 2 && renderReview()}
-        </PayoutWizardShell>
-      </Box>
-
-      <Box sx={{ mt: 5 }}>
-        <DataTable
-          title="法币交易历史"
-          rows={payoutTransactions}
-          rowKey={(row) => row.id}
-          columns={[
-            { id: 'referenceId', label: 'Reference ID', render: (row) => row.referenceId },
-            { id: 'sender', label: 'Sender', render: (row) => row.senderName },
-            { id: 'payee', label: 'Payee', render: (row) => row.payeeName },
-            {
-              id: 'account',
-              label: 'Receiving Account',
-              render: (row) => maskAccount(row.accountNumber),
-            },
-            { id: 'rail', label: 'Rail', width: 90, render: (row) => row.rail },
-            { id: 'currency', label: 'Currency', width: 100, render: (row) => row.currency },
-            {
-              id: 'amount',
-              label: 'Amount',
-              render: (row) => formatMoney(row.amount, row.currency),
-            },
-            { id: 'fee', label: 'Fee', render: (row) => formatMoney(row.fee, row.currency) },
-            {
-              id: 'gets',
-              label: 'Payee Gets',
-              render: (row) => formatMoney(row.payeeGets, row.currency),
-            },
-            { id: 'status', label: 'Status', render: (row) => <StatusChip status={row.status} /> },
-            {
-              id: 'createdAt',
-              label: 'Created Time',
-              render: (row) => formatDateTime(row.createdAt),
-            },
-            {
-              id: 'action',
-              label: 'Action',
-              render: (row) => (
-                <Stack direction="row" spacing={1}>
-                  <IconButton size="small" color="primary" onClick={() => setSelectedPayout(row)}>
-                    <Iconify icon="solar:eye-bold" width={18} />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    color="default"
-                    onClick={() => {
-                      navigator.clipboard?.writeText(row.referenceId);
-                      toast.success('Reference ID 已复制');
-                    }}
-                  >
-                    <Iconify icon="solar:copy-bold" width={18} />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    color="warning"
-                    onClick={() => advancePayoutStatus(row.id)}
-                  >
-                    <Iconify icon="solar:restart-bold" width={18} />
-                  </IconButton>
-                </Stack>
-              ),
-            },
-          ]}
-        />
-      </Box>
-
-      {renderPayoutDrawer()}
+      <ConfirmDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="确认法币出金"
+        content={
+          <Stack spacing={1.25} sx={{ mt: 1 }}>
+            <Stack direction="row" justifyContent="space-between">
+              <Box component="span" sx={{ color: 'text.secondary' }}>
+                出金金额
+              </Box>
+              <Box component="span">{formatMoney(form.amount, form.currency)}</Box>
+            </Stack>
+            <Stack direction="row" justifyContent="space-between">
+              <Box component="span" sx={{ color: 'text.secondary' }}>
+                收款方
+              </Box>
+              <Box component="span">{selectedWhitelistAccount?.payee.name ?? '—'}</Box>
+            </Stack>
+            <Stack direction="row" justifyContent="space-between">
+              <Box component="span" sx={{ color: 'text.secondary' }}>
+                手续费
+              </Box>
+              <Box component="span">{formatMoney(fee, form.currency)}</Box>
+            </Stack>
+            <Divider sx={{ borderStyle: 'dashed' }} />
+            <Stack direction="row" justifyContent="space-between">
+              <Box component="span" sx={{ fontWeight: 'fontWeightSemiBold' }}>
+                净扣款
+              </Box>
+              <Box component="span" sx={{ fontWeight: 'fontWeightSemiBold' }}>
+                {formatMoney(netDebit, form.currency)}
+              </Box>
+            </Stack>
+          </Stack>
+        }
+        action={
+          <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
+            确认出金
+          </Button>
+        }
+      />
     </DashboardContent>
   );
 }

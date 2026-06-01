@@ -9,9 +9,10 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import { paths } from 'src/routes/paths';
-import { useRouter } from 'src/routes/hooks';
+import { useRouter, useUrlQueryState } from 'src/routes/hooks';
 
 import { formatDateTime } from 'src/utils/baas-format';
+import { appendQueryHref } from 'src/utils/baas-navigation';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useBaasDemo } from 'src/contexts/baas-demo-context';
@@ -23,17 +24,25 @@ import { ActionBar, DataTable, StatusChip } from 'src/components/common';
 
 export function AccountsView() {
   const router = useRouter();
+  const { currentHref, searchParams, setQuery } = useUrlQueryState();
   const { entities, globalAccounts, createGlobalAccount } = useBaasDemo();
-  const [query, setQuery] = useState('');
   const activeEntities = entities.filter((entity) => entity.status === 'active');
   const [draft, setDraft] = useState({ entityId: activeEntities[0]?.id ?? '', name: '' });
+  const query = searchParams.get('q') ?? '';
+  const entityFilter = searchParams.get('entityId') ?? 'all';
 
   const filtered = useMemo(
     () =>
-      globalAccounts.filter((account) =>
-        [account.name, account.accountId].join(' ').toLowerCase().includes(query.toLowerCase())
-      ),
-    [globalAccounts, query]
+      globalAccounts.filter((account) => {
+        const matchesQuery = [account.name, account.accountId]
+          .join(' ')
+          .toLowerCase()
+          .includes(query.toLowerCase());
+        const matchesEntity = entityFilter === 'all' || account.entityId === entityFilter;
+
+        return matchesQuery && matchesEntity;
+      }),
+    [entityFilter, globalAccounts, query]
   );
 
   const handleCreateAccount = async () => {
@@ -42,7 +51,9 @@ export function AccountsView() {
     const account = await createGlobalAccount(draft);
     setDraft({ entityId: activeEntities[0]?.id ?? '', name: '' });
     toast.success('全球账户已创建');
-    router.push(paths.dashboard.baas.accountDetails(account.id));
+    router.push(
+      appendQueryHref(paths.dashboard.baas.accountDetails(account.id), { returnTo: currentHref })
+    );
   };
 
   return (
@@ -57,8 +68,15 @@ export function AccountsView() {
         sx={{ mb: { xs: 3, md: 5 } }}
       />
 
-      <ActionBar title="创建 Global Account" description="仅 Active 实体可创建账户；创建后进入独立账户详情页。">
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ width: { xs: 1, md: 'auto' } }}>
+      <ActionBar
+        title="创建 Global Account"
+        description="仅 Active 实体可创建账户；创建后进入独立账户详情页。"
+      >
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={1.5}
+          sx={{ width: { xs: 1, md: 'auto' } }}
+        >
           <TextField
             select
             size="small"
@@ -93,10 +111,17 @@ export function AccountsView() {
       <DataTable
         title="Global Account 列表"
         search={query}
-        onSearch={setQuery}
+        onSearch={(value) => setQuery({ q: value })}
         rows={filtered}
         rowKey={(row) => row.id}
-        onRowClick={(row) => router.push(paths.dashboard.baas.accountDetails(row.id))}
+        emptyDescription={
+          entityFilter !== 'all' ? '当前实体暂无匹配账户，可返回实体详情或清空筛选。' : undefined
+        }
+        onRowClick={(row) =>
+          router.push(
+            appendQueryHref(paths.dashboard.baas.accountDetails(row.id), { returnTo: currentHref })
+          )
+        }
         columns={[
           {
             id: 'account',
@@ -115,14 +140,24 @@ export function AccountsView() {
             label: '所属实体',
             render: (row) => entities.find((entity) => entity.id === row.entityId)?.name ?? '-',
           },
-          { id: 'status', label: '状态', width: 110, render: (row) => <StatusChip status={row.status} /> },
+          {
+            id: 'status',
+            label: '状态',
+            width: 110,
+            render: (row) => <StatusChip status={row.status} />,
+          },
           {
             id: 'crypto',
             label: '数字货币',
             width: 110,
             render: (row) => (row.cryptoEnabled ? '已激活' : '未激活'),
           },
-          { id: 'createdAt', label: '创建时间', width: 160, render: (row) => formatDateTime(row.createdAt) },
+          {
+            id: 'createdAt',
+            label: '创建时间',
+            width: 160,
+            render: (row) => formatDateTime(row.createdAt),
+          },
         ]}
       />
     </DashboardContent>

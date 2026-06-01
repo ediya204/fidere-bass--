@@ -1,12 +1,12 @@
 'use client';
 
 import type { ApiStatus } from 'src/types/common';
-import type { Transaction } from 'src/types/transaction';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useEffect } from 'react';
 
 import Stack from '@mui/material/Stack';
 import Timeline from '@mui/lab/Timeline';
+import Button from '@mui/material/Button';
 import MenuItem from '@mui/material/MenuItem';
 import TimelineDot from '@mui/lab/TimelineDot';
 import TextField from '@mui/material/TextField';
@@ -17,7 +17,9 @@ import TimelineSeparator from '@mui/lab/TimelineSeparator';
 import TimelineItem, { timelineItemClasses } from '@mui/lab/TimelineItem';
 
 import { paths } from 'src/routes/paths';
+import { useUrlQueryState } from 'src/routes/hooks';
 
+import { buildQueryHref, appendQueryHref } from 'src/utils/baas-navigation';
 import { formatMoney, formatDateTime, transactionTypeLabel } from 'src/utils/baas-format';
 
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -25,7 +27,14 @@ import { useBaasDemo } from 'src/contexts/baas-demo-context';
 import { STATUS_COLORS, STATUS_LABELS } from 'src/constants/status-options';
 
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
-import { ActionBar, DataTable, StatusChip, InfoSection, DetailDrawer } from 'src/components/common';
+import {
+  ActionBar,
+  DataTable,
+  StatusChip,
+  InfoSection,
+  RelatedLink,
+  DetailDrawer,
+} from 'src/components/common';
 
 const getTimelineDotColor = (status: ApiStatus) => {
   const color = STATUS_COLORS[status];
@@ -33,10 +42,13 @@ const getTimelineDotColor = (status: ApiStatus) => {
 };
 
 export function TransactionsView() {
+  const { currentHref, searchParams, setQuery } = useUrlQueryState();
   const { entities, globalAccounts, transactions } = useBaasDemo();
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('all');
-  const [selected, setSelected] = useState<Transaction | null>(null);
+  const query = searchParams.get('q') ?? '';
+  const status = searchParams.get('status') ?? 'all';
+  const accountFilter = searchParams.get('accountId') ?? 'all';
+  const entityFilter = searchParams.get('entityId') ?? 'all';
+  const selectedId = searchParams.get('transactionId');
 
   const filtered = useMemo(
     () =>
@@ -51,15 +63,30 @@ export function TransactionsView() {
           .toLowerCase()
           .includes(query.toLowerCase());
         const matchesStatus = status === 'all' || transaction.status === status;
-        return matchesQuery && matchesStatus;
+        const matchesAccount = accountFilter === 'all' || transaction.accountId === accountFilter;
+        const matchesEntity = entityFilter === 'all' || transaction.entityId === entityFilter;
+
+        return matchesQuery && matchesStatus && matchesAccount && matchesEntity;
       }),
-    [query, status, transactions]
+    [accountFilter, entityFilter, query, status, transactions]
   );
 
-  const selectedEntity = selected ? entities.find((entity) => entity.id === selected.entityId) : undefined;
+  const selected = useMemo(
+    () => transactions.find((transaction) => transaction.id === selectedId) ?? null,
+    [selectedId, transactions]
+  );
+  const selectedEntity = selected
+    ? entities.find((entity) => entity.id === selected.entityId)
+    : undefined;
   const selectedAccount = selected
     ? globalAccounts.find((account) => account.id === selected.accountId)
     : undefined;
+
+  useEffect(() => {
+    if (selectedId && !selected) {
+      setQuery({ transactionId: null });
+    }
+  }, [selected, selectedId, setQuery]);
 
   return (
     <DashboardContent maxWidth="xl">
@@ -74,30 +101,44 @@ export function TransactionsView() {
       />
 
       <ActionBar title="流水查询" description="统一查看法币、数字货币、OTC 与内部转账交易。">
-        <TextField
-          select
-          size="small"
-          label="状态"
-          value={status}
-          onChange={(event) => setStatus(event.target.value)}
-          sx={{ minWidth: 180 }}
-        >
-          <MenuItem value="all">全部状态</MenuItem>
-          {(['pending', 'processing', 'completed', 'failed', 'reversed'] as ApiStatus[]).map((item) => (
-            <MenuItem key={item} value={item}>
-              {STATUS_LABELS[item]}
-            </MenuItem>
-          ))}
-        </TextField>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          {(accountFilter !== 'all' || entityFilter !== 'all') && (
+            <Button
+              variant="outlined"
+              color="inherit"
+              onClick={() => setQuery({ accountId: null, entityId: null })}
+            >
+              查看全部流水
+            </Button>
+          )}
+          <TextField
+            select
+            size="small"
+            label="状态"
+            value={status}
+            onChange={(event) => setQuery({ status: event.target.value })}
+            sx={{ minWidth: 180 }}
+          >
+            <MenuItem value="all">全部状态</MenuItem>
+            {(['pending', 'processing', 'completed', 'failed', 'reversed'] as ApiStatus[]).map(
+              (item) => (
+                <MenuItem key={item} value={item}>
+                  {STATUS_LABELS[item]}
+                </MenuItem>
+              )
+            )}
+          </TextField>
+        </Stack>
       </ActionBar>
 
       <DataTable
         title="交易列表"
         search={query}
-        onSearch={setQuery}
+        onSearch={(value) => setQuery({ q: value })}
         rows={filtered}
         rowKey={(row) => row.id}
-        onRowClick={setSelected}
+        emptyDescription="可以从账户、VA、出金或 OTC 页面带着上下文跳转到这里继续核对。"
+        onRowClick={(row) => setQuery({ transactionId: row.id })}
         columns={[
           { id: 'referenceId', label: 'Reference ID', render: (row) => row.referenceId },
           { id: 'type', label: '类型', render: (row) => transactionTypeLabel(row.type) },
@@ -112,7 +153,7 @@ export function TransactionsView() {
       {selected && (
         <DetailDrawer
           open={!!selected}
-          onClose={() => setSelected(null)}
+          onClose={() => setQuery({ transactionId: null })}
           title={selected.referenceId}
           subtitle={transactionTypeLabel(selected.type)}
         >
@@ -120,8 +161,34 @@ export function TransactionsView() {
             title="基础信息"
             rows={[
               { label: '状态', value: <StatusChip status={selected.status} /> },
-              { label: '所属实体', value: selectedEntity?.name ?? '-' },
-              { label: '账户', value: selectedAccount?.accountId ?? selected.accountId },
+              {
+                label: '所属实体',
+                value: selectedEntity ? (
+                  <RelatedLink
+                    href={buildQueryHref(paths.dashboard.baas.entities, {
+                      entityId: selectedEntity.id,
+                    })}
+                    label={selectedEntity.name}
+                    caption={selectedEntity.entityId}
+                  />
+                ) : (
+                  '-'
+                ),
+              },
+              {
+                label: '账户',
+                value: selectedAccount ? (
+                  <RelatedLink
+                    href={appendQueryHref(paths.dashboard.baas.accountDetails(selectedAccount.id), {
+                      returnTo: currentHref,
+                    })}
+                    label={selectedAccount.name}
+                    caption={selectedAccount.accountId}
+                  />
+                ) : (
+                  selected.accountId
+                ),
+              },
               { label: '创建时间', value: formatDateTime(selected.createdAt) },
             ]}
           />
@@ -163,7 +230,11 @@ export function TransactionsView() {
                       {formatDateTime(event.at)}
                     </Typography>
                     {event.description && (
-                      <Typography variant="caption" display="block" sx={{ color: 'text.secondary' }}>
+                      <Typography
+                        variant="caption"
+                        display="block"
+                        sx={{ color: 'text.secondary' }}
+                      >
                         {event.description}
                       </Typography>
                     )}

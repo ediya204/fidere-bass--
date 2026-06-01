@@ -2,7 +2,7 @@
 
 import type { Entity } from 'src/types/entity';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
@@ -12,6 +12,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import { paths } from 'src/routes/paths';
+import { useUrlQueryState } from 'src/routes/hooks';
 
 import { formatDateTime, entityTypeLabel } from 'src/utils/baas-format';
 
@@ -26,6 +27,7 @@ import { ActionBar, DataTable, StatusChip } from 'src/components/common';
 import { EntityDetailDialog } from '../entity-detail-dialog';
 
 export function EntitiesView() {
+  const { searchParams, setQuery } = useUrlQueryState();
   const {
     entities,
     kybRecords,
@@ -38,7 +40,6 @@ export function EntitiesView() {
     approveKybAndCreateEntity,
     submitGlobalAccountOpening,
   } = useBaasDemo();
-  const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Entity | null>(null);
   const [draft, setDraft] = useState({
     name: '',
@@ -48,15 +49,21 @@ export function EntitiesView() {
     phone: '',
   });
 
+  const query = searchParams.get('q') ?? '';
+  const kybStatus = searchParams.get('kybStatus') ?? 'all';
+
   const filtered = useMemo(
     () =>
-      entities.filter((entity) =>
-        [entity.name, entity.entityId, entity.email]
+      entities.filter((entity) => {
+        const matchesQuery = [entity.name, entity.entityId, entity.email]
           .join(' ')
           .toLowerCase()
-          .includes(query.toLowerCase())
-      ),
-    [entities, query]
+          .includes(query.toLowerCase());
+        const matchesKyb = kybStatus === 'all' || entity.kybStatus === kybStatus;
+
+        return matchesQuery && matchesKyb;
+      }),
+    [entities, kybStatus, query]
   );
 
   const selectedEntity = selected
@@ -70,11 +77,23 @@ export function EntitiesView() {
     ? globalAccounts.filter((account) => account.entityId === selectedEntity.id)
     : [];
 
+  useEffect(() => {
+    const selectedId = searchParams.get('entityId');
+
+    if (!selectedId) {
+      setSelected(null);
+      return;
+    }
+
+    setSelected(entities.find((entity) => entity.id === selectedId) ?? null);
+  }, [entities, searchParams]);
+
   const handleCreate = async () => {
     if (!draft.name || !draft.email) return;
     const entity = await createEntity(draft);
     setDraft({ name: '', type: 'company', country: 'HK', email: '', phone: '' });
     setSelected(entity);
+    setQuery({ entityId: entity.id });
     toast.success('实体已创建');
   };
 
@@ -160,10 +179,16 @@ export function EntitiesView() {
       <DataTable
         title="实体列表"
         search={query}
-        onSearch={setQuery}
+        onSearch={(value) => setQuery({ q: value })}
         rows={filtered}
         rowKey={(row) => row.id}
-        onRowClick={setSelected}
+        emptyDescription={
+          kybStatus !== 'all' ? '当前筛选条件下暂无实体，可清空筛选后查看全部。' : undefined
+        }
+        onRowClick={(row) => {
+          setSelected(row);
+          setQuery({ entityId: row.id });
+        }}
         columns={[
           {
             id: 'name',
@@ -207,6 +232,7 @@ export function EntitiesView() {
                 onClick={(event) => {
                   event.stopPropagation();
                   setSelected(row);
+                  setQuery({ entityId: row.id });
                 }}
               >
                 查看详情
@@ -221,7 +247,10 @@ export function EntitiesView() {
         entity={selectedEntity}
         kybRecord={selectedKyb}
         accounts={selectedAccounts}
-        onClose={() => setSelected(null)}
+        onClose={() => {
+          setSelected(null);
+          setQuery({ entityId: null });
+        }}
         onSubmitKyb={handleSubmitKyb}
         onUpdateReviewItem={updateKybReviewItem}
         onActivateGlobalAccount={activateGlobalAccount}

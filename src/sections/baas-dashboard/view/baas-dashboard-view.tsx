@@ -9,7 +9,9 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
 import { paths } from 'src/routes/paths';
+import { useRouter } from 'src/routes/hooks';
 
+import { buildQueryHref } from 'src/utils/baas-navigation';
 import { formatMoney, formatDateTime, transactionTypeLabel } from 'src/utils/baas-format';
 
 import { DashboardContent } from 'src/layouts/dashboard';
@@ -23,9 +25,11 @@ type DashboardStat = {
   value: string | number;
   icon: IconifyName;
   color: 'primary' | 'success' | 'warning' | 'error' | 'info';
+  href?: string;
 };
 
 export function BaasDashboardView() {
+  const router = useRouter();
   const { entities, globalAccounts, transactions, loading } = useBaasDemo();
 
   const stats = useMemo<DashboardStat[]>(() => {
@@ -37,21 +41,42 @@ export function BaasDashboardView() {
     ).length;
 
     return [
-      { title: '实体总数', value: entities.length, icon: 'solar:users-group-rounded-bold', color: 'primary' as const },
-      { title: '账户总数', value: globalAccounts.length, icon: 'solar:wad-of-money-bold', color: 'success' as const },
+      {
+        title: '实体总数',
+        value: entities.length,
+        icon: 'solar:users-group-rounded-bold',
+        color: 'primary' as const,
+        href: paths.dashboard.baas.entities,
+      },
+      {
+        title: '账户总数',
+        value: globalAccounts.length,
+        icon: 'solar:wad-of-money-bold',
+        color: 'success' as const,
+        href: paths.dashboard.baas.accounts,
+      },
       {
         title: '待审核 KYB',
-        value: entities.filter((entity) => ['submitted', 'pending'].includes(entity.kybStatus)).length,
+        value: entities.filter((entity) => ['submitted', 'pending'].includes(entity.kybStatus))
+          .length,
         icon: 'solar:file-check-bold-duotone',
         color: 'warning' as const,
+        href: buildQueryHref(paths.dashboard.baas.entities, { kybStatus: 'submitted' }),
       },
       {
         title: '今日交易金额',
         value: formatMoney(todayAmount, 'USD'),
         icon: 'solar:chart-square-outline',
         color: 'info' as const,
+        href: buildQueryHref(paths.dashboard.baas.transactions, { status: 'completed' }),
       },
-      { title: '异常状态', value: abnormal, icon: 'solar:danger-triangle-bold', color: 'error' as const },
+      {
+        title: '异常状态',
+        value: abnormal,
+        icon: 'solar:danger-triangle-bold',
+        color: 'error' as const,
+        href: buildQueryHref(paths.dashboard.baas.transactions, { status: 'failed' }),
+      },
     ];
   }, [entities, globalAccounts, transactions]);
 
@@ -75,12 +100,26 @@ export function BaasDashboardView() {
             title="最近交易"
             rows={transactions.slice(0, 6)}
             rowKey={(row) => row.id}
+            emptyDescription="完成法币、数字货币或 OTC 操作后，交易会汇总到这里。"
+            onRowClick={(row) =>
+              router.push(
+                buildQueryHref(paths.dashboard.baas.transactions, { transactionId: row.id })
+              )
+            }
             columns={[
               { id: 'referenceId', label: 'Reference ID', render: (row) => row.referenceId },
               { id: 'type', label: '类型', render: (row) => transactionTypeLabel(row.type) },
-              { id: 'amount', label: '金额', render: (row) => formatMoney(row.amount, row.currency) },
+              {
+                id: 'amount',
+                label: '金额',
+                render: (row) => formatMoney(row.amount, row.currency),
+              },
               { id: 'status', label: '状态', render: (row) => <StatusChip status={row.status} /> },
-              { id: 'createdAt', label: '创建时间', render: (row) => formatDateTime(row.createdAt) },
+              {
+                id: 'createdAt',
+                label: '创建时间',
+                render: (row) => formatDateTime(row.createdAt),
+              },
             ]}
           />
         </Grid>
@@ -90,6 +129,10 @@ export function BaasDashboardView() {
             title="最近新增实体"
             rows={entities.slice(0, 5)}
             rowKey={(row) => row.id}
+            emptyDescription="创建实体后会显示最新 KYB 状态。"
+            onRowClick={(row) =>
+              router.push(buildQueryHref(paths.dashboard.baas.entities, { entityId: row.id }))
+            }
             columns={[
               {
                 id: 'name',
@@ -103,7 +146,12 @@ export function BaasDashboardView() {
                   </Stack>
                 ),
               },
-              { id: 'status', label: '状态', width: 90, render: (row) => <StatusChip status={row.status} /> },
+              {
+                id: 'status',
+                label: '状态',
+                width: 90,
+                render: (row) => <StatusChip status={row.status} />,
+              },
             ]}
           />
         </Grid>

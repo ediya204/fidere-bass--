@@ -4,16 +4,17 @@ import Grid from '@mui/material/Grid';
 import Button from '@mui/material/Button';
 
 import { paths } from 'src/routes/paths';
-import { useRouter } from 'src/routes/hooks';
+import { useRouter, useUrlQueryState } from 'src/routes/hooks';
 
 import { formatMoney, formatDateTime, transactionTypeLabel } from 'src/utils/baas-format';
+import { buildQueryHref, appendQueryHref, safeBaasReturnTo } from 'src/utils/baas-navigation';
 
 import { DashboardContent } from 'src/layouts/dashboard';
 import { useBaasDemo } from 'src/contexts/baas-demo-context';
 
 import { EmptyContent } from 'src/components/empty-content';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
-import { DataTable, StatusChip, InfoSection } from 'src/components/common';
+import { DataTable, StatusChip, InfoSection, RelatedLink } from 'src/components/common';
 
 type Props = {
   id: string;
@@ -21,9 +22,14 @@ type Props = {
 
 export function VirtualAccountDetailsView({ id }: Props) {
   const router = useRouter();
+  const { currentHref, searchParams } = useUrlQueryState();
   const { entities, globalAccounts, virtualAccounts, transactions } = useBaasDemo();
 
   const account = virtualAccounts.find((item) => item.id === id);
+  const backHref = safeBaasReturnTo(
+    searchParams.get('returnTo'),
+    paths.dashboard.baas.virtualAccounts
+  );
 
   if (!account) {
     return (
@@ -40,7 +46,7 @@ export function VirtualAccountDetailsView({ id }: Props) {
         />
         <EmptyContent
           title="未找到虚拟账户"
-          action={<Button onClick={() => router.push(paths.dashboard.baas.virtualAccounts)}>返回列表</Button>}
+          action={<Button onClick={() => router.push(backHref)}>返回列表</Button>}
         />
       </DashboardContent>
     );
@@ -63,7 +69,7 @@ export function VirtualAccountDetailsView({ id }: Props) {
           { name: account.accountNumber },
         ]}
         action={
-          <Button variant="outlined" color="inherit" onClick={() => router.push(paths.dashboard.baas.virtualAccounts)}>
+          <Button variant="outlined" color="inherit" onClick={() => router.push(backHref)}>
             返回列表
           </Button>
         }
@@ -89,8 +95,32 @@ export function VirtualAccountDetailsView({ id }: Props) {
           <InfoSection
             title="关联信息"
             rows={[
-              { label: '所属实体', value: entity?.name ?? '-' },
-              { label: 'Global Account', value: globalAccount?.accountId ?? '-' },
+              {
+                label: '所属实体',
+                value: entity ? (
+                  <RelatedLink
+                    href={buildQueryHref(paths.dashboard.baas.entities, { entityId: entity.id })}
+                    label={entity.name}
+                    caption={entity.entityId}
+                  />
+                ) : (
+                  '-'
+                ),
+              },
+              {
+                label: 'Global Account',
+                value: globalAccount ? (
+                  <RelatedLink
+                    href={appendQueryHref(paths.dashboard.baas.accountDetails(globalAccount.id), {
+                      returnTo: currentHref,
+                    })}
+                    label={globalAccount.name}
+                    caption={globalAccount.accountId}
+                  />
+                ) : (
+                  '-'
+                ),
+              },
               { label: '币种', value: account.currency },
               { label: '余额', value: formatMoney(account.balance, account.currency) },
               { label: '状态', value: <StatusChip status={account.status} /> },
@@ -105,11 +135,28 @@ export function VirtualAccountDetailsView({ id }: Props) {
             rows={accountTransactions}
             rowKey={(row) => row.id}
             emptyText="暂无交易"
+            emptyDescription="VA 入账或相关资金动作会在这里显示。"
+            onRowClick={(row) =>
+              router.push(
+                buildQueryHref(paths.dashboard.baas.transactions, {
+                  accountId: account.globalAccountId,
+                  transactionId: row.id,
+                })
+              )
+            }
             columns={[
               { id: 'type', label: '类型', render: (row) => transactionTypeLabel(row.type) },
-              { id: 'amount', label: '金额', render: (row) => formatMoney(row.amount, row.currency) },
+              {
+                id: 'amount',
+                label: '金额',
+                render: (row) => formatMoney(row.amount, row.currency),
+              },
               { id: 'status', label: '状态', render: (row) => <StatusChip status={row.status} /> },
-              { id: 'createdAt', label: '创建时间', render: (row) => formatDateTime(row.createdAt) },
+              {
+                id: 'createdAt',
+                label: '创建时间',
+                render: (row) => formatDateTime(row.createdAt),
+              },
             ]}
           />
         </Grid>

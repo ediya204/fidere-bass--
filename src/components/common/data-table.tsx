@@ -31,6 +31,9 @@ type Props<T> = {
   search?: string;
   onSearch?: (value: string) => void;
   emptyText?: string;
+  emptyDescription?: string;
+  emptyAction?: ReactNode;
+  showCount?: boolean;
   onRowClick?: (row: T) => void;
 };
 
@@ -42,6 +45,9 @@ export function DataTable<T>({
   rowKey,
   onSearch,
   emptyText = '暂无数据',
+  emptyDescription,
+  emptyAction,
+  showCount = true,
   onRowClick,
 }: Props<T>) {
   return (
@@ -54,7 +60,16 @@ export function DataTable<T>({
           justifyContent="space-between"
           sx={{ p: 2.5 }}
         >
-          {title && <Typography variant="subtitle1">{title}</Typography>}
+          {title && (
+            <Stack spacing={0.25}>
+              <Typography variant="subtitle1">{title}</Typography>
+              {showCount && (
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  共 {rows.length} 条
+                </Typography>
+              )}
+            </Stack>
+          )}
           {onSearch && (
             <TextField
               size="small"
@@ -102,7 +117,7 @@ export function DataTable<T>({
 
       {rows.length === 0 && (
         <Box sx={{ py: 4 }}>
-          <EmptyContent title={emptyText} />
+          <EmptyContent title={emptyText} description={emptyDescription} action={emptyAction} />
         </Box>
       )}
     </Card>

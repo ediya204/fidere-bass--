@@ -5,6 +5,8 @@ import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
+import { RouterLink } from 'src/routes/components';
+
 import { Iconify } from 'src/components/iconify';
 
 type Props = {
@@ -13,11 +15,29 @@ type Props = {
   icon: IconifyName;
   color?: 'primary' | 'success' | 'warning' | 'error' | 'info';
   helper?: string;
+  href?: string;
 };
 
-export function StatCard({ title, value, icon, color = 'primary', helper }: Props) {
+export function StatCard({ title, value, icon, color = 'primary', helper, href }: Props) {
   return (
-    <Card sx={{ p: 2.5, borderRadius: 1 }}>
+    <Card
+      component={href ? RouterLink : 'div'}
+      href={href}
+      sx={{
+        p: 2.5,
+        borderRadius: 1,
+        color: 'inherit',
+        textDecoration: 'none',
+        cursor: href ? 'pointer' : 'default',
+        transition: (theme) => theme.transitions.create(['box-shadow', 'transform']),
+        ...(href && {
+          '&:hover': {
+            boxShadow: (theme) => theme.customShadows.z8,
+            transform: 'translateY(-1px)',
+          },
+        }),
+      }}
+    >
       <Stack direction="row" alignItems="center" spacing={2}>
         <Box
           sx={{
