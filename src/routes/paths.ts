@@ -116,6 +116,7 @@ export const paths = {
       virtualAccountDetails: (id: string) => `${ROOTS.DASHBOARD}/baas/virtual-accounts/${id}`,
       fiat: `${ROOTS.DASHBOARD}/baas/fiat`,
       crypto: `${ROOTS.DASHBOARD}/baas/crypto`,
+      cryptoWhitelist: `${ROOTS.DASHBOARD}/baas/crypto-whitelist`,
       otc: `${ROOTS.DASHBOARD}/baas/otc`,
       transactions: `${ROOTS.DASHBOARD}/baas/transactions`,
     },

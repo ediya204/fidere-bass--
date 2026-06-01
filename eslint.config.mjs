@@ -1,6 +1,7 @@
 import globals from 'globals';
 import eslintJs from '@eslint/js';
 import eslintTs from 'typescript-eslint';
+import nextPlugin from '@next/eslint-plugin-next';
 import reactPlugin from 'eslint-plugin-react';
 import importPlugin from 'eslint-plugin-import';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
@@ -194,6 +195,8 @@ export default [
   },
   eslintJs.configs.recommended,
   ...eslintTs.configs.recommended,
+  nextPlugin.flatConfig.recommended,
+  nextPlugin.flatConfig.coreWebVitals,
   reactPlugin.configs.flat.recommended,
   customConfig,
 ];

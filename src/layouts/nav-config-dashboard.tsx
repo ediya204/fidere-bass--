@@ -35,6 +35,11 @@ export const navData: NavSectionProps['data'] = [
       { title: '虚拟账户', path: paths.dashboard.baas.virtualAccounts, icon: ICONS.invoice },
       { title: '法币操作', path: paths.dashboard.baas.fiat, icon: ICONS.order },
       { title: '数字货币操作', path: paths.dashboard.baas.crypto, icon: ICONS.product },
+      {
+        title: '数字货币白名单管理',
+        path: paths.dashboard.baas.cryptoWhitelist,
+        icon: ICONS.invoice,
+      },
       { title: 'OTC 操作', path: paths.dashboard.baas.otc, icon: ICONS.analytics },
       { title: '交易流水', path: paths.dashboard.baas.transactions, icon: ICONS.file },
     ],
