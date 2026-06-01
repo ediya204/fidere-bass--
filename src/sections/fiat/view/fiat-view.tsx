@@ -459,10 +459,10 @@ export function FiatView() {
         <Grid size={{ xs: 12, lg: 7 }}>
           <Stack spacing={3}>
             <DataTable
-              title="外部白名单账户列表"
+              title="信托白名单账户列表"
               rows={whitelistAccountOptions}
               rowKey={(row) => row.account.id}
-              emptyText="暂无外部白名单账户"
+              emptyText="暂无信托白名单账户"
               columns={[
                 { id: 'name', label: '白名单账户', render: (row) => row.payee.name },
                 { id: 'currency', label: '币种', render: (row) => row.account.currency },

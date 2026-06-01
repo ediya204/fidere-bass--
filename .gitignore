@@ -28,3 +28,4 @@ yarn-error.log*
 
 # local project harness checkout
 HARNESS/
+.vercel

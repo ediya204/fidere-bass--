@@ -33,7 +33,7 @@ export type ConfigValue = {
 // ----------------------------------------------------------------------
 
 export const CONFIG: ConfigValue = {
-  appName: 'Minimal UI',
+  appName: 'Fidere BaaS Demo',
   appVersion: packageJson.version,
   serverUrl: process.env.NEXT_PUBLIC_SERVER_URL ?? '',
   assetsDir: process.env.NEXT_PUBLIC_ASSETS_DIR ?? '',
@@ -45,7 +45,7 @@ export const CONFIG: ConfigValue = {
   auth: {
     method: 'jwt',
     skip: true,
-    redirectPath: paths.dashboard.root,
+    redirectPath: paths.dashboard.baas.root,
   },
   /**
    * Mapbox

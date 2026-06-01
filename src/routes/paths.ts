@@ -1,11 +1,7 @@
-import { kebabCase } from 'es-toolkit';
-
-import { _id, _postTitles } from 'src/_mock/assets';
-
 // ----------------------------------------------------------------------
 
-const MOCK_ID = _id[1];
-const MOCK_TITLE = _postTitles[2];
+const MOCK_ID = 'demo-id';
+const MOCK_TITLE = 'demo-post';
 
 const ROOTS = {
   AUTH: '/auth',
@@ -41,8 +37,8 @@ export const paths = {
   },
   post: {
     root: `/post`,
-    details: (title: string) => `/post/${kebabCase(title)}`,
-    demo: { details: `/post/${kebabCase(MOCK_TITLE)}` },
+    details: (title: string) => `/post/${title}`,
+    demo: { details: `/post/${MOCK_TITLE}` },
   },
   // AUTH
   auth: {
@@ -153,11 +149,11 @@ export const paths = {
     post: {
       root: `${ROOTS.DASHBOARD}/post`,
       new: `${ROOTS.DASHBOARD}/post/new`,
-      details: (title: string) => `${ROOTS.DASHBOARD}/post/${kebabCase(title)}`,
-      edit: (title: string) => `${ROOTS.DASHBOARD}/post/${kebabCase(title)}/edit`,
+      details: (title: string) => `${ROOTS.DASHBOARD}/post/${title}`,
+      edit: (title: string) => `${ROOTS.DASHBOARD}/post/${title}/edit`,
       demo: {
-        details: `${ROOTS.DASHBOARD}/post/${kebabCase(MOCK_TITLE)}`,
-        edit: `${ROOTS.DASHBOARD}/post/${kebabCase(MOCK_TITLE)}/edit`,
+        details: `${ROOTS.DASHBOARD}/post/${MOCK_TITLE}`,
+        edit: `${ROOTS.DASHBOARD}/post/${MOCK_TITLE}/edit`,
       },
     },
     order: {
