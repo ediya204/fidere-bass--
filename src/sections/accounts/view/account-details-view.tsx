@@ -15,7 +15,6 @@ import { DashboardContent } from 'src/layouts/dashboard';
 import { useBaasDemo } from 'src/contexts/baas-demo-context';
 
 import { toast } from 'src/components/snackbar';
-import { Iconify } from 'src/components/iconify';
 import { EmptyContent } from 'src/components/empty-content';
 import { CustomBreadcrumbs } from 'src/components/custom-breadcrumbs';
 import { DataTable, StatusChip, InfoSection, RelatedLink } from 'src/components/common';
@@ -33,7 +32,6 @@ export function AccountDetailsView({ id }: Props) {
     virtualAccounts,
     usdtAddresses,
     transactions,
-    createVirtualAccount,
     createUSDTAddress,
   } = useBaasDemo();
 
@@ -62,34 +60,13 @@ export function AccountDetailsView({ id }: Props) {
   }
 
   const entity = entities.find((item) => item.id === account.entityId);
-  const accountVirtualAccounts = virtualAccounts.filter(
-    (item) => item.globalAccountId === account.id
-  );
+  const accountVirtualAccounts = virtualAccounts
+    .filter((item) => item.globalAccountId === account.id)
+    .slice(0, 1);
   const usdtAddress = usdtAddresses.find((address) => address.accountId === account.id);
   const accountTransactions = transactions
     .filter((transaction) => transaction.accountId === account.id)
     .slice(0, 8);
-
-  const handleCreateVa = async () => {
-    const virtualAccount = await createVirtualAccount(account.id);
-
-    if (!virtualAccount) {
-      toast.error('VA 创建请求提交失败');
-      return;
-    }
-
-    toast.success('VA 创建请求已提交', {
-      action: {
-        label: '查看 VA',
-        onClick: () =>
-          router.push(
-            appendQueryHref(paths.dashboard.baas.virtualAccountDetails(virtualAccount.id), {
-              returnTo: currentHref,
-            })
-          ),
-      },
-    });
-  };
 
   const handleCreateAddress = async () => {
     await createUSDTAddress(account.id);
@@ -116,13 +93,6 @@ export function AccountDetailsView({ id }: Props) {
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Button variant="outlined" color="inherit" onClick={() => router.push(backHref)}>
               返回列表
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleCreateVa}
-              startIcon={<Iconify icon="solar:bill-list-bold" />}
-            >
-              创建 VA
             </Button>
             <Button variant="outlined" onClick={handleCreateAddress} disabled={!!usdtAddress}>
               {usdtAddress ? '已创建 USDT 地址' : '激活并创建 USDT 地址'}
@@ -198,7 +168,7 @@ export function AccountDetailsView({ id }: Props) {
             rows={accountVirtualAccounts}
             rowKey={(row) => row.id}
             emptyText="暂无 VA"
-            emptyDescription="点击创建 VA 后，新 VA 会出现在这里。"
+            emptyDescription="Global Account 默认关联一个 VA，加载后会在这里显示。"
             onRowClick={(row) =>
               router.push(
                 appendQueryHref(paths.dashboard.baas.virtualAccountDetails(row.id), {

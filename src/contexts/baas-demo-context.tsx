@@ -88,10 +88,11 @@ type BaasDemoContextValue = {
   submitGlobalAccountOpening: (entityId: string) => Promise<GlobalAccount | null>;
   activateGlobalAccount: (entityId: string) => void;
   createGlobalAccount: (payload: CreateAccountPayload) => Promise<GlobalAccount>;
-  createVirtualAccount: (accountId: string) => Promise<VirtualAccount | null>;
   createUSDTAddress: (accountId: string) => Promise<UsdtAddress>;
   createPayeeExternalCall: (payload: CreatePayeePayload) => Promise<PayeeExternalCall>;
-  sendPayeeEmailVerificationCode: (purpose: EmailVerificationPurpose) => Promise<{ expiresAt: string }>;
+  sendPayeeEmailVerificationCode: (
+    purpose: EmailVerificationPurpose
+  ) => Promise<{ expiresAt: string }>;
   verifyPayeeEmailCode: (code: string) => Promise<void>;
   createCryptoWhitelistAddress: (
     payload: CreateCryptoWhitelistPayload
@@ -428,7 +429,14 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
 
   const handleCreateGlobalAccount = useCallback(async (payload: CreateAccountPayload) => {
     const nextAccount = await createAccount(payload);
+    const nextVirtualAccount = await createVirtualAccount(nextAccount);
+
     setGlobalAccounts((current) => [nextAccount, ...current]);
+    setVirtualAccounts((current) => [
+      nextVirtualAccount,
+      ...current.filter((item) => item.globalAccountId !== nextAccount.id),
+    ]);
+
     return nextAccount;
   }, []);
 
@@ -448,8 +456,13 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
         entityId,
         name: `${entity.name} Global Account`,
       });
+      const nextVirtualAccount = await createVirtualAccount(nextAccount);
 
       setGlobalAccounts((current) => [nextAccount, ...current]);
+      setVirtualAccounts((current) => [
+        nextVirtualAccount,
+        ...current.filter((item) => item.globalAccountId !== nextAccount.id),
+      ]);
       setEntities((current) =>
         current.map((item) =>
           item.id === entityId ? { ...item, status: 'active', updatedAt: now } : item
@@ -538,18 +551,6 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
       )
     );
   }, []);
-
-  const handleCreateVirtualAccount = useCallback(
-    async (accountId: string) => {
-      const account = globalAccounts.find((item) => item.id === accountId);
-      if (!account) return null;
-
-      const nextVirtualAccount = await createVirtualAccount(account);
-      setVirtualAccounts((current) => [nextVirtualAccount, ...current]);
-      return nextVirtualAccount;
-    },
-    [globalAccounts]
-  );
 
   const handleCreateUSDTAddress = useCallback(async (accountId: string) => {
     const nextAddress = await createUSDTAddress(accountId);
@@ -878,7 +879,6 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
       submitGlobalAccountOpening,
       activateGlobalAccount,
       createGlobalAccount: handleCreateGlobalAccount,
-      createVirtualAccount: handleCreateVirtualAccount,
       createUSDTAddress: handleCreateUSDTAddress,
       createPayeeExternalCall: handleCreatePayeeExternalCall,
       sendPayeeEmailVerificationCode,
@@ -918,7 +918,6 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
       submitGlobalAccountOpening,
       activateGlobalAccount,
       handleCreateGlobalAccount,
-      handleCreateVirtualAccount,
       handleCreateUSDTAddress,
       handleCreatePayeeExternalCall,
       handleCreateCryptoWhitelistAddress,
