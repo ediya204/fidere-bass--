@@ -3,7 +3,6 @@
 import type { UsdtAddress } from 'src/types/usdt';
 import type { OtcTrade, OtcTradePayload } from 'src/types/otc';
 import type { Entity, CreateEntityPayload } from 'src/types/entity';
-import type { ExternalPayee, PayeeExternalCall, CreatePayeePayload } from 'src/types/payee';
 import type { GlobalAccount, VirtualAccount, CreateAccountPayload } from 'src/types/account';
 import type {
   KybRecord,
@@ -17,6 +16,14 @@ import type {
   PayoutTransaction,
   CreatePayoutPayload,
 } from 'src/types/transaction';
+import type {
+  ExternalPayee,
+  PayeeExternalCall,
+  CreatePayeePayload,
+  EmailVerificationPurpose,
+  CreateCryptoWhitelistPayload,
+  UpdateCryptoWhitelistPayload,
+} from 'src/types/payee';
 
 import { useMemo, useState, useEffect, useContext, useCallback, createContext } from 'react';
 
@@ -29,16 +36,22 @@ import { getEntities, createEntity } from 'src/services/entity-service';
 import { fiatWithdraw, createFiatPayout } from 'src/services/fiat-service';
 import { getUSDTAddresses, createUSDTAddress } from 'src/services/usdt-service';
 import {
-  getExternalPayees,
-  getPayeeExternalCalls,
-  createPayeeExternalCall,
-} from 'src/services/payee-service';
-import {
   getAccounts,
   createAccount,
   getVirtualAccounts,
   createVirtualAccount,
 } from 'src/services/account-service';
+import {
+  getExternalPayees,
+  verifyPayeeEmailCode,
+  getPayeeExternalCalls,
+  createPayeeExternalCall,
+  retryCryptoWhitelistSync,
+  deleteCryptoWhitelistAddress,
+  createCryptoWhitelistAddress,
+  updateCryptoWhitelistAddress,
+  sendPayeeEmailVerificationCode,
+} from 'src/services/payee-service';
 
 // ----------------------------------------------------------------------
 
@@ -78,6 +91,15 @@ type BaasDemoContextValue = {
   createVirtualAccount: (accountId: string) => Promise<VirtualAccount | null>;
   createUSDTAddress: (accountId: string) => Promise<UsdtAddress>;
   createPayeeExternalCall: (payload: CreatePayeePayload) => Promise<PayeeExternalCall>;
+  sendPayeeEmailVerificationCode: (purpose: EmailVerificationPurpose) => Promise<{ expiresAt: string }>;
+  verifyPayeeEmailCode: (code: string) => Promise<void>;
+  createCryptoWhitelistAddress: (
+    payload: CreateCryptoWhitelistPayload
+  ) => Promise<PayeeExternalCall>;
+  updateCryptoWhitelistAddress: (payload: UpdateCryptoWhitelistPayload) => Promise<void>;
+  deleteCryptoWhitelistAddress: (id: string) => Promise<void>;
+  retryCryptoWhitelistSync: (id: string) => Promise<void>;
+  setCryptoWhitelistStatus: (id: string, status: PayeeExternalCall['status']) => void;
   fiatWithdraw: (payload: TransferPayload) => Promise<Transaction | null>;
   createFiatPayout: (payload: CreatePayoutPayload) => Promise<PayoutTransaction>;
   advancePayoutStatus: (id: string) => void;
@@ -559,6 +581,81 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
     return nextCall;
   }, []);
 
+  const scheduleCryptoWhitelistSync = useCallback((id: string) => {
+    window.setTimeout(() => {
+      const now = new Date().toISOString();
+
+      setPayeeCalls((current) =>
+        current.map((call) =>
+          call.id === id && call.status === 'pending_sync'
+            ? { ...call, status: 'processing', updatedAt: now }
+            : call
+        )
+      );
+    }, 1200);
+
+    window.setTimeout(() => {
+      const now = new Date().toISOString();
+
+      setPayeeCalls((current) =>
+        current.map((call) =>
+          call.id === id && call.status === 'processing'
+            ? { ...call, status: 'completed', updatedAt: now, lastSyncedAt: now }
+            : call
+        )
+      );
+    }, 2800);
+  }, []);
+
+  const handleCreateCryptoWhitelistAddress = useCallback(
+    async (payload: CreateCryptoWhitelistPayload) => {
+      const nextCall = await createCryptoWhitelistAddress(payload);
+      setPayeeCalls((current) => [nextCall, ...current]);
+      scheduleCryptoWhitelistSync(nextCall.id);
+      return nextCall;
+    },
+    [scheduleCryptoWhitelistSync]
+  );
+
+  const handleUpdateCryptoWhitelistAddress = useCallback(
+    async (payload: UpdateCryptoWhitelistPayload) => {
+      const nextCall = await updateCryptoWhitelistAddress(payload);
+
+      setPayeeCalls((current) =>
+        current.map((call) => (call.id === payload.id ? { ...call, ...nextCall } : call))
+      );
+    },
+    []
+  );
+
+  const handleDeleteCryptoWhitelistAddress = useCallback(async (id: string) => {
+    await deleteCryptoWhitelistAddress(id);
+    setPayeeCalls((current) => current.filter((call) => call.id !== id));
+  }, []);
+
+  const handleRetryCryptoWhitelistSync = useCallback(
+    async (id: string) => {
+      const nextCall = await retryCryptoWhitelistSync(id);
+
+      setPayeeCalls((current) =>
+        current.map((call) => (call.id === id ? { ...call, ...nextCall } : call))
+      );
+      scheduleCryptoWhitelistSync(id);
+    },
+    [scheduleCryptoWhitelistSync]
+  );
+
+  const setCryptoWhitelistStatus = useCallback(
+    (id: string, status: PayeeExternalCall['status']) => {
+      const now = new Date().toISOString();
+
+      setPayeeCalls((current) =>
+        current.map((call) => (call.id === id ? { ...call, status, updatedAt: now } : call))
+      );
+    },
+    []
+  );
+
   const handleFiatWithdraw = useCallback(
     async (payload: TransferPayload) => {
       const entityId = findAccountEntityId(globalAccounts, payload.accountId);
@@ -667,19 +764,11 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
       const entityId = findAccountEntityId(globalAccounts, payload.accountId);
       if (!entityId) return null;
 
-      await handleCreatePayeeExternalCall({
-        accountId: payload.accountId,
-        type: 'crypto',
-        name: payload.payeeName,
-        currency: payload.currency,
-        destination: payload.destination,
-      });
-
       const nextTransaction = await cryptoWithdraw(payload, entityId);
       setTransactions((current) => [nextTransaction, ...current]);
       return nextTransaction;
     },
-    [globalAccounts, handleCreatePayeeExternalCall]
+    [globalAccounts]
   );
 
   const handleOtcTrade = useCallback(
@@ -792,6 +881,13 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
       createVirtualAccount: handleCreateVirtualAccount,
       createUSDTAddress: handleCreateUSDTAddress,
       createPayeeExternalCall: handleCreatePayeeExternalCall,
+      sendPayeeEmailVerificationCode,
+      verifyPayeeEmailCode,
+      createCryptoWhitelistAddress: handleCreateCryptoWhitelistAddress,
+      updateCryptoWhitelistAddress: handleUpdateCryptoWhitelistAddress,
+      deleteCryptoWhitelistAddress: handleDeleteCryptoWhitelistAddress,
+      retryCryptoWhitelistSync: handleRetryCryptoWhitelistSync,
+      setCryptoWhitelistStatus,
       fiatWithdraw: handleFiatWithdraw,
       createFiatPayout: handleCreateFiatPayout,
       advancePayoutStatus,
@@ -825,6 +921,11 @@ export function BaasDemoProvider({ children }: { children: React.ReactNode }) {
       handleCreateVirtualAccount,
       handleCreateUSDTAddress,
       handleCreatePayeeExternalCall,
+      handleCreateCryptoWhitelistAddress,
+      handleUpdateCryptoWhitelistAddress,
+      handleDeleteCryptoWhitelistAddress,
+      handleRetryCryptoWhitelistSync,
+      setCryptoWhitelistStatus,
       handleFiatWithdraw,
       handleCreateFiatPayout,
       advancePayoutStatus,

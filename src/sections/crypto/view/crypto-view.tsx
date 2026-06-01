@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -9,6 +9,7 @@ import Alert from '@mui/material/Alert';
 import Radio from '@mui/material/Radio';
 import Stack from '@mui/material/Stack';
 import Button from '@mui/material/Button';
+import Dialog from '@mui/material/Dialog';
 import Switch from '@mui/material/Switch';
 import Divider from '@mui/material/Divider';
 import MenuItem from '@mui/material/MenuItem';
@@ -17,11 +18,16 @@ import TextField from '@mui/material/TextField';
 import CardHeader from '@mui/material/CardHeader';
 import RadioGroup from '@mui/material/RadioGroup';
 import Typography from '@mui/material/Typography';
+import DialogTitle from '@mui/material/DialogTitle';
 import CardContent from '@mui/material/CardContent';
 import FormControl from '@mui/material/FormControl';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import InputAdornment from '@mui/material/InputAdornment';
 import FormControlLabel from '@mui/material/FormControlLabel';
 
 import { paths } from 'src/routes/paths';
+import { RouterLink } from 'src/routes/components';
 import { useRouter, useUrlQueryState } from 'src/routes/hooks';
 
 import { buildQueryHref } from 'src/utils/baas-navigation';
@@ -61,8 +67,17 @@ const formatDestination = (destination: string) => destination.replace(/^TRON\s+
 export function CryptoView() {
   const router = useRouter();
   const { searchParams } = useUrlQueryState();
-  const { globalAccounts, transactions, payeeCalls, cryptoWithdraw } = useBaasDemo();
+  const {
+    globalAccounts,
+    transactions,
+    payeeCalls,
+    cryptoWithdraw,
+    verifyPayeeEmailCode,
+    sendPayeeEmailVerificationCode,
+  } = useBaasDemo();
   const requestedAccountId = searchParams.get('accountId');
+  const requestedNetwork = searchParams.get('network') as ChainType | null;
+  const requestedPayeeId = searchParams.get('payeeId');
 
   const cryptoAccounts = useMemo(
     () => globalAccounts.filter((account) => account.status === 'active' && account.cryptoEnabled),
@@ -70,6 +85,13 @@ export function CryptoView() {
   );
 
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailCode, setEmailCode] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [emailExpiresAt, setEmailExpiresAt] = useState('');
+  const [emailCountdown, setEmailCountdown] = useState(0);
+  const [sendingEmailCode, setSendingEmailCode] = useState(false);
+  const [verifyingEmailCode, setVerifyingEmailCode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState<CryptoForm>(() => {
     const first = globalAccounts.find(
@@ -96,14 +118,41 @@ export function CryptoView() {
       requestedAccountId !== form.accountId &&
       cryptoAccounts.some((account) => account.id === requestedAccountId)
     ) {
-      setForm((current) => ({ ...current, accountId: requestedAccountId, whitelistPayeeId: '' }));
+      setForm((current) => ({
+        ...current,
+        accountId: requestedAccountId,
+        chain:
+          requestedNetwork === 'TRC20' || requestedNetwork === 'ERC20'
+            ? requestedNetwork
+            : current.chain,
+        whitelistPayeeId: requestedPayeeId ?? '',
+      }));
+      return;
+    }
+
+    if (
+      (requestedNetwork === 'TRC20' || requestedNetwork === 'ERC20') &&
+      requestedNetwork !== form.chain
+    ) {
+      setForm((current) => ({
+        ...current,
+        chain: requestedNetwork,
+        whitelistPayeeId: requestedPayeeId ?? '',
+      }));
       return;
     }
 
     if (!form.accountId && cryptoAccounts[0]?.id) {
       setForm((current) => ({ ...current, accountId: cryptoAccounts[0].id }));
     }
-  }, [cryptoAccounts, form.accountId, requestedAccountId]);
+  }, [
+    cryptoAccounts,
+    form.accountId,
+    form.chain,
+    requestedAccountId,
+    requestedNetwork,
+    requestedPayeeId,
+  ]);
 
   const usdtBalance = useMemo(() => {
     const balance = selectedAccount?.cryptoBalances.find((item) => item.currency === 'USDT');
@@ -119,9 +168,19 @@ export function CryptoView() {
     () =>
       cryptoPayeeCalls.filter(
         (call) =>
-          call.accountId === form.accountId && getPayeeChain(call.destination) === form.chain
+          call.accountId === form.accountId &&
+          call.status === 'completed' &&
+          getPayeeChain(call.destination) === form.chain
       ),
     [cryptoPayeeCalls, form.accountId, form.chain]
+  );
+
+  const selectedAccountCompletedPayees = useMemo(
+    () =>
+      cryptoPayeeCalls.filter(
+        (call) => call.accountId === form.accountId && call.status === 'completed'
+      ),
+    [cryptoPayeeCalls, form.accountId]
   );
 
   const selectedWhitelistPayee = useMemo(
@@ -130,7 +189,10 @@ export function CryptoView() {
   );
 
   useEffect(() => {
-    const firstPayeeId = accountWhitelistPayees[0]?.id ?? '';
+    const requestedCompletedPayee = accountWhitelistPayees.find(
+      (call) => call.id === requestedPayeeId
+    );
+    const firstPayeeId = requestedCompletedPayee?.id ?? accountWhitelistPayees[0]?.id ?? '';
 
     if (
       !form.whitelistPayeeId ||
@@ -138,7 +200,7 @@ export function CryptoView() {
     ) {
       setForm((current) => ({ ...current, whitelistPayeeId: firstPayeeId }));
     }
-  }, [accountWhitelistPayees, form.whitelistPayeeId]);
+  }, [accountWhitelistPayees, form.whitelistPayeeId, requestedPayeeId]);
 
   const networkFee = NETWORK_FEE[form.chain];
   const netDebit = form.amount + networkFee;
@@ -147,6 +209,65 @@ export function CryptoView() {
 
   const handleAccountChange = (accountId: string) => {
     setForm((current) => ({ ...current, accountId, whitelistPayeeId: '' }));
+  };
+
+  const sendEmailCode = useCallback(async () => {
+    setSendingEmailCode(true);
+    setEmailError('');
+    try {
+      const result = await sendPayeeEmailVerificationCode({
+        operation: 'withdraw',
+        targetId: form.whitelistPayeeId,
+      });
+      setEmailExpiresAt(result.expiresAt);
+      setEmailCountdown(60);
+      toast.success('邮箱验证码已发送');
+    } catch (sendError) {
+      setEmailError(sendError instanceof Error ? sendError.message : '验证码发送失败');
+    } finally {
+      setSendingEmailCode(false);
+    }
+  }, [form.whitelistPayeeId, sendPayeeEmailVerificationCode]);
+
+  useEffect(() => {
+    if (!emailOpen) {
+      setEmailCode('');
+      setEmailError('');
+      setEmailExpiresAt('');
+      setEmailCountdown(0);
+      return;
+    }
+
+    sendEmailCode();
+  }, [emailOpen, sendEmailCode]);
+
+  useEffect(() => {
+    if (!emailCountdown) return undefined;
+
+    const timer = window.setInterval(() => {
+      setEmailCountdown((current) => Math.max(current - 1, 0));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [emailCountdown]);
+
+  const handleVerifyAndSubmit = async () => {
+    if (!emailCode.trim()) {
+      setEmailError('请输入邮箱验证码');
+      return;
+    }
+
+    setVerifyingEmailCode(true);
+    setEmailError('');
+    try {
+      await verifyPayeeEmailCode(emailCode.trim());
+      await handleSubmit();
+      setEmailOpen(false);
+    } catch (verifyError) {
+      setEmailError(verifyError instanceof Error ? verifyError.message : '邮箱验证码校验失败');
+    } finally {
+      setVerifyingEmailCode(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -275,8 +396,8 @@ export function CryptoView() {
                   error={payeeInvalid}
                   helperText={
                     payeeInvalid
-                      ? '当前出金账户在该链网络下暂无白名单收款方'
-                      : '只能选择当前出金账户绑定的白名单地址'
+                      ? '当前出金账户在该链网络下暂无已完成白名单地址'
+                      : '只能选择当前出金账户绑定且已完成的白名单地址'
                   }
                 >
                   {accountWhitelistPayees.map((payee) => (
@@ -409,7 +530,21 @@ export function CryptoView() {
                 </Card>
 
                 {payeeInvalid && (
-                  <Alert severity="warning">请先为当前出金账户创建对应链网络的白名单 Payee。</Alert>
+                  <Alert
+                    severity="warning"
+                    action={
+                      <Button
+                        component={RouterLink}
+                        href={paths.dashboard.baas.cryptoWhitelist}
+                        color="inherit"
+                        size="small"
+                      >
+                        去添加
+                      </Button>
+                    }
+                  >
+                    当前账户在该链网络下暂无已完成白名单地址，请先去白名单管理中添加。
+                  </Alert>
                 )}
 
                 <Button
@@ -432,10 +567,11 @@ export function CryptoView() {
         <Grid size={{ xs: 12, lg: 7 }}>
           <Stack spacing={3}>
             <DataTable
-              title="外部白名单账户列表"
-              rows={cryptoPayeeCalls}
+              title="当前账户可用白名单地址"
+              rows={selectedAccountCompletedPayees}
               rowKey={(row) => row.id}
-              emptyText="暂无外部白名单账户"
+              emptyText="当前账户暂无可用白名单地址"
+              emptyDescription="仅展示当前账户下已完成状态的数字货币白名单地址。"
               columns={[
                 { id: 'name', label: '白名单账户', render: (row) => row.name },
                 { id: 'currency', label: '币种', render: (row) => row.currency },
@@ -533,11 +669,84 @@ export function CryptoView() {
           </Stack>
         }
         action={
-          <Button variant="contained" color="warning" onClick={handleSubmit} disabled={submitting}>
-            确认出金
+          <Button
+            variant="contained"
+            color="warning"
+            disabled={submitting}
+            onClick={() => {
+              setConfirmOpen(false);
+              setEmailOpen(true);
+            }}
+          >
+            确认并验证邮箱
           </Button>
         }
       />
+
+      <Dialog
+        fullWidth
+        maxWidth="xs"
+        open={emailOpen}
+        onClose={verifyingEmailCode || submitting ? undefined : () => setEmailOpen(false)}
+      >
+        <DialogTitle>邮箱验证码确认</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Alert severity="warning">数字货币出金为敏感操作，需邮箱验证码通过后提交。</Alert>
+            <TextField
+              fullWidth
+              autoFocus
+              label="邮箱验证码"
+              value={emailCode}
+              inputProps={{ maxLength: 6 }}
+              disabled={verifyingEmailCode || submitting}
+              error={!!emailError}
+              helperText={
+                emailError ||
+                (emailExpiresAt ? `验证码有效期至 ${formatDateTime(emailExpiresAt)}` : '')
+              }
+              onChange={(event) =>
+                setEmailCode(event.target.value.replace(/\D/g, '').slice(0, 6))
+              }
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <Button
+                      size="small"
+                      disabled={
+                        sendingEmailCode || verifyingEmailCode || submitting || emailCountdown > 0
+                      }
+                      onClick={sendEmailCode}
+                    >
+                      {emailCountdown > 0 ? `${emailCountdown}s` : '发送'}
+                    </Button>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Demo 验证码：123456。输入 000000 可模拟错误，999999 可模拟过期。
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            color="inherit"
+            disabled={verifyingEmailCode || submitting}
+            onClick={() => setEmailOpen(false)}
+          >
+            取消
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            disabled={sendingEmailCode || verifyingEmailCode || submitting}
+            onClick={handleVerifyAndSubmit}
+          >
+            {verifyingEmailCode || submitting ? '提交中...' : '验证并提交出金'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </DashboardContent>
   );
 }

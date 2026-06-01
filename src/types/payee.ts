@@ -3,6 +3,15 @@ import type { ApiStatus, CurrencyCode } from './common';
 export type PayeeType = 'fiat' | 'crypto';
 export type PayeeOwnershipType = 'SELF_OWNED' | 'THIRD_PARTY';
 export type PayeeRail = 'RTGS' | 'SWIFT' | 'ACH' | 'FPS';
+export type CryptoNetwork = 'TRC20' | 'ERC20';
+export type SensitiveWhitelistOperation =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'withdraw'
+  | 'retry_sync'
+  | 'enable'
+  | 'disable';
 
 export type PayeeReceivingAccount = {
   id: string;
@@ -36,6 +45,13 @@ export type PayeeExternalCall = {
   status: ApiStatus;
   referenceId: string;
   createdAt: string;
+  network?: CryptoNetwork;
+  address?: string;
+  purpose?: string;
+  updatedAt?: string;
+  createdBy?: string;
+  lastEmailVerifiedAt?: string;
+  lastSyncedAt?: string;
 };
 
 export type CreatePayeePayload = {
@@ -44,4 +60,27 @@ export type CreatePayeePayload = {
   name: string;
   currency: CurrencyCode;
   destination: string;
+};
+
+export type CreateCryptoWhitelistPayload = {
+  accountId: string;
+  network: CryptoNetwork;
+  name: string;
+  address: string;
+  purpose?: string;
+};
+
+export type UpdateCryptoWhitelistPayload = {
+  id: string;
+  name: string;
+  purpose?: string;
+};
+
+export type EmailVerificationPurpose = {
+  operation: SensitiveWhitelistOperation;
+  targetId?: string;
+};
+
+export type EmailVerificationResult = {
+  expiresAt: string;
 };

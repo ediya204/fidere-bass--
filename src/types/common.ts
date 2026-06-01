@@ -4,6 +4,8 @@ export type ApiStatus =
   | 'draft'
   | 'submitted'
   | 'pending'
+  | 'pending_email_verification'
+  | 'pending_sync'
   | 'approved'
   | 'rejected'
   | 'active'
@@ -14,6 +16,7 @@ export type ApiStatus =
   | 'processing'
   | 'expired'
   | 'reversed'
+  | 'disabled'
   | 'not_created'
   | 'need_more_info';
 
